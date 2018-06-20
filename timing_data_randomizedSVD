@@ -1,0 +1,17 @@
+Regular SVD:
+32 X 32 took 0.076738 seconds
+48 X 48 took 0.17803 seconds
+64 X 64 took 0.397597 seconds
+96 X 96 took 1.05667 seconds
+128 X 128 took 2.55559 seconds
+192 X 192 took 7.19351 seconds
+256 X 256 took 16.6249 seconds
+
+Randomized SVD:
+32 X 32 took 0.128939 seconds
+48 X 48 took 0.29429 seconds
+64 X 64 took 0.555324 seconds
+96 X 96 took 1.46503 seconds
+128 X 128 took 3.27199 seconds
+192 X 192 took 9.46 seconds
+256 X 256 took 20.16 seconds
