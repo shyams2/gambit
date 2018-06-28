@@ -10,9 +10,9 @@ void randomizedRangeFinder(af::array& Q, af::array A, int size, int nIter)
 {
     Q = af::randn(A.dims(1), size, f64);
 
-    // Matrices which are just place holders for values which aren't going to be used:
+    // Arrays which are just place holders for values which aren't going to be used:
     af::array B, C;
-    // Power iteration normalization:
+    // Power iteration normalization(adds stability):
     for(int i = 0; i < nIter; i++)
     {   
         // af::lu(Q, B, C, af::matmul(A, Q));
@@ -27,7 +27,6 @@ void randomizedRangeFinder(af::array& Q, af::array A, int size, int nIter)
 
     af::array temp = af::matmul(A, Q);
     af::qr(Q, B, C, temp);
-    af::eval(Q);
 }
 
 void randomizedSVD(af::array& U, af::array& S, af::array& V, af::array A, int nComponents, int overSamples, int nIter) 

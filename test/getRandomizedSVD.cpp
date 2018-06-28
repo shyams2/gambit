@@ -3,9 +3,13 @@
 
 int main()
 {
+    std::cout << "Device Details" << std::endl;
+    af::info();
+    std::cout << std::endl;
+
     // Ratio of largest to smallest singular value:
     double kappa = 1e14;
-    const int N[] = {32, 48, 64, 96, 128, 192, 256};
+    const int N[] = {32, 48, 64, 96, 128, 192, 256, 512, 1024, 2048, 4096, 8192};
     double timing_data_regular_svd[sizeof(N) / sizeof(N[0])];
     double timing_data_randomized_svd[sizeof(N) / sizeof(N[0])];
     int i, j; // loop counters

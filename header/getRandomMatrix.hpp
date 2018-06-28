@@ -1,15 +1,13 @@
+// Returns a Random Matrix with the condition number κ that is passed to the function
+// Original Source:
+// https://ieee754wonderland.quora.com/Numerical-Stability-and-Orthogonalization
+
 #ifndef __getRandomMatrix_hpp__
 #define __getRandomMatrix_hpp__
 
 #include <iostream>
 #include <arrayfire.h>
 #include <cmath>
-
-/*!
-Returns a Random Matrix with the condition number κ that is passed to the function
-Original Source:
-https://ieee754wonderland.quora.com/Numerical-Stability-and-Orthogonalization
- */
 
 void getRandomMatrix(const int m, const int n, double kappa, af::array& A) 
 {
