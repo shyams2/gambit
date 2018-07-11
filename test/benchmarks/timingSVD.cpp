@@ -1,5 +1,5 @@
-// This function gets the QR decomposition for different sizes of arrays
-// and outputs the timing data to file for post-processing.
+// This function gets the SVD for different sizes of arrays and 
+// outputs the timing data to file for post-processing.
 
 #include <iostream>
 #include <fstream>
@@ -14,27 +14,28 @@ int main()
     const int N[] = {32, 64, 128, 256, 512, 1024, 2048, 4096, 9192};
     double timing_data[sizeof(N) / sizeof(N[0])];
     int i, j; // loop counters
-    af::array Q, R, T;
+    af::array U, S, Vh;
     
     for(i = 0; i < sizeof(N) / sizeof(N[0]); i++)
     {
+        std::cout << "Benchmarking for N = " << N[i] << std::endl;
         af::array A = af::randu(N[i], N[i], f64);
         
         // Kernel Compilation:
-        af::qr(Q, R, T, A);
-        af::eval(Q);
-        af::eval(R);
-        af::eval(T);
+        af::svd(U, S, Vh, A);
+        af::eval(U);
+        af::eval(S);
+        af::eval(Vh);
         af::sync();
 
         af::timer::start();
         // Performing over 10 runs and then taking average
         for(j = 0; j < 10; j++)
         {
-            af::qr(Q, R, T, A);
-            af::eval(Q);
-            af::eval(R);
-            af::eval(T);
+            af::svd(U, S, Vh, A);
+            af::eval(U);
+            af::eval(S);
+            af::eval(Vh);
         }
         af::sync();
         timing_data[i] = af::timer::stop() / 10; // dividing by 10 to average over iterations
@@ -48,5 +49,6 @@ int main()
         file << (int) N[i] << " " << timing_data[i] << std::endl;
     }
 
+    system("python plot_scaling.py SVD");
     return 0;
 }

@@ -1,3 +1,4 @@
+import sys
 import numpy as np
 import matplotlib as mpl
 mpl.use('agg')
@@ -38,10 +39,10 @@ data = np.loadtxt('data.txt')
 N    = data[:, 0]
 t    = data[:, 1]
 
-pl.loglog(N, t, '-o', label = r'Mat$\times$Mat') # change label appropriately
-# pl.loglog(N, t[0] * N**2 / N[0]**2, '--', color = 'black' label = r'$\mathcal{O}(N^2)$')
-textstr = 'Tested Using:\nArrayFire v3.6.0 (OpenCL, 64-bit Linux, build 2858662)\nIntel(R) Xeon(R) CPU E5-2682 v4 @ 2.50GHz, 3951 MB'
-pl.text(0.03 * (np.max(N) - np.min(N)), 5e-6 * (np.max(t) - np.min(t)), textstr, fontsize=20)
+pl.loglog(N, t, '-o', label = r'' + str(sys.argv[1])) # change label appropriately
+pl.loglog(N, t[0] * N**2 / N[0]**2, '-.', color = 'black', label = r'$\mathcal{O}(N^2)$')
+# textstr = 'Tested Using:\nArrayFire v3.6.0 (OpenCL, 64-bit Linux, build 2858662)\nIntel(R) Xeon(R) CPU E5-2682 v4 @ 2.50GHz, 3951 MB'
+# pl.text(0.03 * (np.max(N) - np.min(N)), 5e-6 * (np.max(t) - np.min(t)), textstr, fontsize=20)
 pl.loglog(N, t[0] * N**3 / N[0]**3, '--', color = 'black', label = r'$\mathcal{O}(N^3)$')
 pl.xlabel(r'$N$')
 pl.ylabel('Time')

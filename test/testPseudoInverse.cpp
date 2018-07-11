@@ -3,17 +3,18 @@
 // that the answer given for an invertible square matrix match results given by 
 // the standard inverse
 
-#include "../header/pinv.hpp"
-#include <iostream>
-#include <arrayfire.h>
+#include "MatrixData.hpp"
+#include "MatrixFactorizer.hpp"
 
 int main(int argc, char** argv)
 {
-    int size        = atoi(argv[1]);
-    af::array A     = af::randu(size, size, f64);
-    af::array Ainv  = af::inverse(A); //standard inverse
-    af::array Apinv = pinv(A); //pseudo inverse
+    int size     = atoi(argv[1]);
+    array A      = af::randu(size, size, f64);
+    array A_inv  = af::inverse(A); //standard inverse
 
-    double error = af::norm(Ainv - Apinv);
+    // Creating an instance of MatrixData:
+    MatrixData M(A);
+
+    double error = af::norm(A_inv - MatrixFactorizer::getPseudoInverse(M));
     std::cout << "Error:" << error << std::endl;
 }

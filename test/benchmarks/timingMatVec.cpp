@@ -1,4 +1,4 @@
-// This function gets the matrix vector products for different sizes 
+// This function gets the matrix matrix products for different sizes 
 // of arrays and outputs the timing data to file for post-processing.
 
 #include <iostream>
@@ -17,6 +17,7 @@ int main()
 
     for(i = 0; i < sizeof(N) / sizeof(N[0]); i++)
     {
+        std::cout << "Benchmarking for N = " << N[i] << std::endl;
         af::array A = af::randu(N[i], N[i], f64);
         af::array B = af::randu(N[i], N[i], f64);
         
@@ -47,5 +48,6 @@ int main()
         file << (int) N[i] << " " << timing_data[i] << std::endl;
     }
 
+    system("python plot_scaling.py MatMat");
     return 0;
 }
