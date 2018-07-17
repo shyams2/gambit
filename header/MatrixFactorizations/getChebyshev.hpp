@@ -21,60 +21,73 @@ void scalePoints(double c1, double r1, array x1, double c2, double r2, array& x2
 // Returns the Chebyshev polynomials evaluated at x:
 // T is of shape (x.elements(), N)
 // where T[i, j] is the j-th Chebyshev polynomial evaluated at the i-th point x[i]
-void getChebyshevPolynomials(int N, array x, array& T)
+array getChebyshevPolynomials(int N, array x)
 {
     // Initializing T:
-    T = af::constant(0, x.elements(), N, f64);
+    array T = af::constant(0, x.elements(), N, f64);
     // The n-th Chebyshev polynomial is given by T_n(x) = cos(n * arccos(x))
-    for(int i = 0; i < N, i++)
+    for(int i = 0; i < N; i++)
     {
         T.col(i) = af::cos(i * af::acos(x));
     }
+
+    return T;
 }
 
 // Returns the interpolation operator / L2L
-void getChebyshevL2L(array x, array x_cheb, array& L2L)
+array getChebyshevL2L(array x, array x_cheb)
 {
     // Getting the Chebyshev polymonials:
     // Rank is the number of points in x_cheb
-    rank = x_cheb.elements();
+    int rank = x_cheb.elements();
 
-    // Declaring T_x and T_cheb:
-    array T_x, T_cheb;
     // Getting T_x and T_cheb:
-    getChebyshevPolynomials(rank, x, T_x);
-    getChebyshevPolynomials(rank, x_cheb, T_cheb);
+    array T_x    = getChebyshevPolynomials(rank, x);
+    array T_cheb = getChebyshevPolynomials(rank, x_cheb);
 
-    L2L = (2 * af::matmul(T_x, T_cheb.T()) - 1) / rank;
+    array L2L = (2 * af::matmul(T_x, T_cheb.T()) - 1) / rank;
+    return L2L;
+}
+
+array getM2L(array cheb_nodes_1, array cheb_nodes_2, MatrixData M)
+{
+    // Evaluating the Kernel function at the Chebyshev nodes:
+    return M.buildArray(int(cheb_nodes_1.elements()), int(cheb_nodes_2.elements()),
+                        cheb_nodes_1, cheb_nodes_2
+                       );
 }
 
 namespace MatrixFactorizer
 {
     void getChebyshev(array& U, array& S, array& V, int rank, MatrixData M) 
     {
-        target_coords = M.getTargetCoordinates();
-        source_coords = M.getSourceCoordinates();
+        array target_coords = M.getTargetCoordinates();
+        array source_coords = M.getSourceCoordinates();
 
         // Determining the center and radius of targets:
-        c_targets = 0.5 * (af::max(target_coords) + af::min(target_coords));
-        r_targets = 0.5 * (af::max(target_coords) - af::min(target_coords));
+        double c_targets = 0.5 * (af::max<double>(target_coords) + af::min<double>(target_coords));
+        double r_targets = 0.5 * (af::max<double>(target_coords) - af::min<double>(target_coords));
 
         // Determining the center and radius of sources:
-        c_sources = 0.5 * (af::max(source_coords) + af::min(source_coords));
-        r_sources = 0.5 * (af::max(source_coords) - af::min(source_coords));
+        double c_sources = 0.5 * (af::max<double>(source_coords) + af::min<double>(source_coords));
+        double r_sources = 0.5 * (af::max<double>(source_coords) - af::min<double>(source_coords));
     
         // Obtaining the standard Chebyshev nodes:
-        cheb_nodes = getChebyshevNodes(rank);
+        array standard_cheb_nodes = getChebyshevNodes(rank);
 
         // Obtain the scaled Chebyshev nodes for the targets:
         array cheb_nodes_targets, cheb_nodes_sources;
-        scalePoints(0, 1, cheb_nodes, c_targets, r_targets, cheb_nodes_targets);
-        scalePoints(0, 1, cheb_nodes, c_sources, r_sources, cheb_nodes_sources);
+        scalePoints(0, 1, standard_cheb_nodes, c_targets, r_targets, cheb_nodes_targets);
+        scalePoints(0, 1, standard_cheb_nodes, c_sources, r_sources, cheb_nodes_sources);
 
         // Standard Locations of the coordinates:
         array standard_targets, standard_sources;
         scalePoints(c_targets, r_targets, target_coords, 0, 1, standard_targets);
-        scalePoints(c_sources, r_sources, source_coords, 0, 1, cheb_nodes);
+        scalePoints(c_sources, r_sources, source_coords, 0, 1, standard_sources);
+    
+        U = getChebyshevL2L(standard_targets, standard_cheb_nodes);
+        S = getM2L(cheb_nodes_targets, cheb_nodes_sources, M);
+        V = getChebyshevL2L(standard_sources, standard_cheb_nodes).T();
     }
 }
 

@@ -39,7 +39,7 @@ double term(array& U, array& V, uint rank)
 int max_index(const array& A, const std::vector<int>& idx)
 {
     uint i, j; // used in the loops
-    uint max_idx;
+    uint max_idx = 0;
     
     // If no suitable index if found, j = -1 is returned which breaks the iterations loop:
     j = -1;

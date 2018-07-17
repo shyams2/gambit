@@ -8,5 +8,6 @@
 #include "MatrixFactorizations/getACA.hpp"
 #include "MatrixFactorizations/getRRQR.hpp"
 #include "MatrixFactorizations/getID.hpp"
+#include "MatrixFactorizations/getChebyshev.hpp"
 
 #endif

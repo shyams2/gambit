@@ -8,8 +8,8 @@ CC              = g++ $(COMPILER_OPTIONS)
 LIBS            = -laf
 LIB_PATHS       = -L $(AF_PATH)/lib
 INCLUDES        = -I $(AF_PATH)/include -I $(EIGEN_PATH) -I ./header
-SOURCES         = ./test/testID.cpp
-EXECUTABLE      = ./exec/testID
+SOURCES         = ./test/testChebyshev.cpp
+EXECUTABLE      = ./exec/testChebyshev
 
 all:
 	$(CC) $(SOURCES) -o $(EXECUTABLE) $(INCLUDES) $(LIBS) $(LIB_PATHS)

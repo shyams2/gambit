@@ -80,6 +80,7 @@ public:
     // The entry (i, j) in this matrix would give the interaction between the
     // i-th target and the j-th source
     array buildArray();
+    array buildArray(int n_rows, int n_columns, array targets, array sources);
 
     // Estimates the rank of the matrix encoded using SVD
     int estimateRank(double tolerance);
@@ -103,6 +104,9 @@ public:
     // Returns the number of rows and columns:
     int getNumRows();
     int getNumColumns();
+    // Returns the source and target coordinates:
+    array getTargetCoordinates();
+    array getSourceCoordinates();
 };
 
 MatrixData::MatrixData(array& input_array)
@@ -179,6 +183,22 @@ array MatrixData::buildArray()
     array_to_return = this->matrixEntries(af::range(this->n_rows),
                                           af::range(this->n_columns),
                                           this->targets, (this->sources).T()
+                                         );
+    af::gforSet(false);
+
+    return array_to_return;
+}
+
+// Overloaded function when the new(interpolated) sources / target locations and 
+// directly provide to function used to build the kernel operator's entries:
+array MatrixData::buildArray(int n_rows, int n_columns, array targets, array sources)
+{
+    array array_to_return;
+    // Allowing broadcasting:
+    af::gforSet(true);
+    array_to_return = this->matrixEntries(af::range(n_rows),
+                                          af::range(n_columns),
+                                          targets, (sources).T()
                                          );
     af::gforSet(false);
 
@@ -346,6 +366,16 @@ int MatrixData::getNumRows()
 int MatrixData::getNumColumns()
 {
     return this->n_columns;
+}
+
+array MatrixData::getTargetCoordinates()
+{
+    return this->targets;
+}
+
+array MatrixData::getSourceCoordinates()
+{
+    return this->sources;
 }
 
 #endif
