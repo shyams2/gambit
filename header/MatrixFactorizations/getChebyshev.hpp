@@ -7,7 +7,7 @@
 // These values are in the standard interval of [-1, 1]
 array getChebyshevNodes(int N)
 {
-    return -af::cos(af::Pi*(2 * af::range(N, f64) + 1) / (2 * N));
+    return -af::cos(af::Pi * (2 * af::range(N).as(f64) + 1) / (2 * N));
 }
 
 // Maps the points from a domain having center c1 and radius r1
@@ -25,10 +25,21 @@ array getChebyshevPolynomials(int N, array x)
 {
     // Initializing T:
     array T = af::constant(0, x.elements(), N, f64);
+
+    // For some reason this gives nan in some rows for large array sizes:
     // The n-th Chebyshev polynomial is given by T_n(x) = cos(n * arccos(x))
-    for(int i = 0; i < N; i++)
+    // for(int i = 0; i < N; i++)
+    // {
+    //     T.col(i) = af::cos(i * af::acos(x));
+    // }
+
+    // T_0 = 1; T_1 = x; 
+    T.col(0) = 1;
+    T.col(1) = x;
+    // Recursive relation: T_n = 2 * x * T_{n-1} - T{n-2}
+    for(int i = 2; i < N; i++)
     {
-        T.col(i) = af::cos(i * af::acos(x));
+        T.col(i) = 2 * x * T.col(i - 1) - T.col(i - 2);
     }
 
     return T;

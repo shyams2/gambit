@@ -24,16 +24,15 @@ int main(int argc, char** argv)
 
     //Initializing the array  which we need to approximate:
     // Location of points:
-    array x1 = af::randu(size, f64); // [0, 1]
-    array x2 = 2 + af::randu(size, f64); // [2, 3]
+    array x1 =  1.5  - af::randu(size, f64); // r = 0.5 c = 1
+    array x2 = -1.5  + af::randu(size, f64); // r = 0.5 c = -1
 
     // Creating an instance of MatrixData:
     MatrixData M(interaction_kernel, x1, x2);
 
     // Initializing the arrays U, S, V:
     array U, S, V;
-    MatrixFactorizer::getChebyshev(U, V, S, rank, M);
-
+    MatrixFactorizer::getChebyshev(U, S, V, rank, M);
     // Finding Z_approx:
     array approx = af::matmul(U, S, V);
 
