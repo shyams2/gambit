@@ -32,7 +32,7 @@ int main(int argc, char** argv)
 
     // Initializing the arrays U, S, V:
     array U, S, V;
-    MatrixFactorizer::getChebyshev(U, S, V, rank, M);
+    MatrixFactorizer::getInterpolation(U, S, V, rank, M);
     // Finding Z_approx:
     array approx = af::matmul(U, S, V);
 

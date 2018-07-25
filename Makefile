@@ -5,11 +5,11 @@ CC              = g++ $(COMPILER_OPTIONS)
 # -lafcuda   - For CUDA backend
 # -lafopencl - For OpenCL backend
 # -laf       - For unified backend
-LIBS            = -laf
+LIBS            = -lafcpu
 LIB_PATHS       = -L $(AF_PATH)/lib
 INCLUDES        = -I $(AF_PATH)/include -I $(EIGEN_PATH) -I ./header
-SOURCES         = ./test/testChebyshev.cpp
-EXECUTABLE      = ./exec/testChebyshev
+SOURCES         = ./test/testInterpolation.cpp
+EXECUTABLE      = ./exec/testInterpolation
 
 all:
 	$(CC) $(SOURCES) -o $(EXECUTABLE) $(INCLUDES) $(LIBS) $(LIB_PATHS)
