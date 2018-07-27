@@ -1,7 +1,38 @@
 #ifndef __getInterpolation_hpp__
 #define __getInterpolation_hpp__
 
+#include <cstdlib>
 #include "MatrixData.hpp"
+
+// Returns the roots on the N-th Legendre polynomial
+// These values are in the standard interval of [-1, 1]
+array getLegendreNodes(int N)
+{
+    // Holds the coefficients of the polynomial:
+    array poly = af::join(0, af::constant(0, N, f64), af::constant(1, 1, f64));
+
+    // Getting the scaled companion matrix:
+    // This has been obtained following https://docs.scipy.org/doc/numpy-1.12.0/reference/generated/numpy.polynomial.legendre.legcompanion.html
+    array companion = af::constant(0, N, N, f64);
+    array scale     = 1 / af::sqrt(2 * af::range(N).as(f64) + 1);
+
+    // Assigning the values to the sub-diagonal and super-diagonal:
+    companion(af::seq(1, af::end, N+1)) =   af::range(N).as(f64)(af::seq(1, N-1))
+                                          * scale(af::seq(0, N-2)) 
+                                          * scale(af::seq(1, N-1));
+
+    companion(af::seq(N, af::end, N+1)) = companion(af::seq(1, af::end, N+1));
+
+    // Getting the eigen values of the companion matrix to get roots
+    // Using SVD since ArrayFire doesn't give Eigenvalues:
+    // Since the matrix is symmetric, we can use the singular values 
+    // as it's equivalent to the eigenvalues.
+    array U, S;
+    af::svd(U, S, U, companion); // U isn't needed anyways
+
+    // Taking the negatives of the singular values and appending:
+    return af::join(0, -1 * S(af::seq(0, af::end, 2)), S(af::seq(af::end-1, 0, -2)));
+}
 
 // Returns the roots on the N-th Chebyshev polynomial
 // These values are in the standard interval of [-1, 1]
@@ -81,7 +112,7 @@ array getM2L(array nodes_1, array nodes_2, MatrixData M)
 
 namespace MatrixFactorizer
 {
-    void getInterpolation(array& U, array& S, array& V, int rank, MatrixData M) 
+    void getInterpolation(array& U, array& S, array& V, int rank, string interpolation_type, MatrixData M) 
     {
         array target_coords = M.getTargetCoordinates();
         array source_coords = M.getSourceCoordinates();
@@ -94,12 +125,31 @@ namespace MatrixFactorizer
         double c_sources = 0.5 * (af::max<double>(source_coords) + af::min<double>(source_coords));
         double r_sources = 0.5 * (af::max<double>(source_coords) - af::min<double>(source_coords));
     
+        array standard_nodes;
         // Obtaining the standard Chebyshev nodes:
-        // array standard_nodes = getChebyshevNodes(rank);
-        // Obtaining the standard equispaced nodes:
-        array standard_nodes = getEquispacedNodes(rank);
+        if(interpolation_type == "CHEBYSHEV")
+        {
+            standard_nodes = getChebyshevNodes(rank);
+        }
+
         // Obtaining the standard Legendre nodes:
-        array standard_nodes = getLegendreNodes(rank);
+        else if(interpolation_type == "LEGENDRE")
+        {
+            standard_nodes = getLegendreNodes(rank);
+        }
+
+        // Obtaining the standard equispaced nodes:
+        else if(interpolation_type == "EQUISPACED")
+        {
+            standard_nodes = getEquispacedNodes(rank);
+        }
+
+        else
+        {
+            cout << "Invalid choice for interpolation type" << endl;
+            cout << "Please use either CHEBYSHEV, LEGENDRE or EQUISPACED" << endl;
+            exit(1);
+        }
 
         // Obtain the scaled Chebyshev nodes for the targets:
         array nodes_targets, nodes_sources;
