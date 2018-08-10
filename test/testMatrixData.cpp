@@ -18,7 +18,19 @@ int main(int argc, char** argv)
     array A = af::randu(100, 100, f64);
     MatrixData M1(A);
     cout << "Checking the data stored in the object is the same" << endl;
-    cout << "||A - M1->A|| = " << af::mean<double>(A - M1.getArray()) << endl;
+    cout << "||A - M1->A|| = " << af::norm(A - M1.getArray()) << endl;
+
+    cout << endl << "Testing File-Writing" << endl;
+    M1.dumpArray("data.h5");
+    cout << "DONE!" << endl;
+
+    cout << endl << "Testing File-Loading" << endl;
+    M1.loadArray("data.h5");
+    cout << "DONE!" << endl << endl;
+
+    cout << "Checking that the data is the same even after writing and loading" << endl;
+    cout << "||A - M1->A|| = " << af::norm(A - M1.getArray()) << endl;
+
 
     cout << endl << "Method 2 of creating an instance of MatrixData" << endl;
     cout << "Providing the dimensions and rank of the matrix data" << endl;
@@ -41,7 +53,7 @@ int main(int argc, char** argv)
     cout << endl << "Method 4 of creating an instance of MatrixData" << endl;
     cout << "Providing the blueprint for the way the matrix is generated via a function" << endl;
     array target_coords = 1 + af::randu(100, f64);
-    array source_coords = 2 + af::randu(200, f64);
+    array source_coords = 3 + af::randu(200, f64);
     MatrixData M4(interaction_kernel, target_coords, source_coords);
     cout << "Getting the Matrix by using the getArray() method..." << endl;
     A = M4.getArray();

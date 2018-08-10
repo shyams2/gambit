@@ -5,6 +5,7 @@
 *.dll
 *.dylib
 *.exe
+*.out
 *.o
 *.ko
 *.so

@@ -1,5 +1,6 @@
 COMPILER_OPTIONS= -Wall -O3 -std=c++11 -g
-CC              = g++ $(COMPILER_OPTIONS)
+# Using h5c++ to make possible file writing using HDF5:
+CC              = h5c++ $(COMPILER_OPTIONS)
 # Change this to:
 # -lafcpu    - For CPU backend
 # -lafcuda   - For CUDA backend
@@ -7,9 +8,9 @@ CC              = g++ $(COMPILER_OPTIONS)
 # -laf       - For unified backend
 LIBS            = -lafcpu
 LIB_PATHS       = -L $(AF_PATH)/lib
-INCLUDES        = -I $(AF_PATH)/include -I $(EIGEN_PATH) -I ./header
-SOURCES         = ./test/testInterpolation.cpp
-EXECUTABLE      = ./exec/testInterpolation
+INCLUDES        = -I $(AF_PATH)/include -I $(EIGEN_PATH) -I $(HIGHFIVE_PATH)/include -I ./header
+SOURCES         = ./test/testMatrixData.cpp
+EXECUTABLE      = ./exec/testMatrixData
 
 all:
 	$(CC) $(SOURCES) -o $(EXECUTABLE) $(INCLUDES) $(LIBS) $(LIB_PATHS)

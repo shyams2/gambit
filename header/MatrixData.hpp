@@ -14,12 +14,17 @@
 #define __MatrixData_hpp__
 
 #include <iostream>
+#include <vector>
 #include <functional>
 #include <stdlib.h>
 #include <stdio.h>
 #include <arrayfire.h>
 #include <assert.h>
 #include <cmath>
+// Headers needed for file-writing with HighFive:
+#include <highfive/H5DataSet.hpp>
+#include <highfive/H5DataSpace.hpp>
+#include <highfive/H5File.hpp>
 
 using std::cout;
 using std::endl;
@@ -102,11 +107,15 @@ public:
     array getColumn(int i);
 
     // Returns the number of rows and columns:
-    int getNumRows();
-    int getNumColumns();
+    size_t getNumRows();
+    size_t getNumColumns();
     // Returns the source and target coordinates:
     array getTargetCoordinates();
     array getSourceCoordinates();
+    // Dumps the array encoded to the file mentioned under the dataset name "array"
+    void dumpArray(string file_name);
+    // Loads back the data from the H5File onto the object:
+    void loadArray(string file_name);
 };
 
 MatrixData::MatrixData(array& input_array)
@@ -358,12 +367,12 @@ array MatrixData::getColumn(int i)
     }
 }
 
-int MatrixData::getNumRows()
+size_t MatrixData::getNumRows()
 {
     return this->n_rows;
 }
 
-int MatrixData::getNumColumns()
+size_t MatrixData::getNumColumns()
 {
     return this->n_columns;
 }
@@ -376,6 +385,35 @@ array MatrixData::getTargetCoordinates()
 array MatrixData::getSourceCoordinates()
 {
     return this->sources;
+}
+
+void MatrixData::dumpArray(string file_name)
+{
+    // NOTE: Currently data is being dumped in 1D form, which will then need to be reshaped:
+    HighFive::File file(file_name, HighFive::File::ReadWrite | HighFive::File::Create | HighFive::File::Truncate);
+    std::vector<size_t> dims(1);
+    dims[0] = MatrixData::getNumRows() * MatrixData::getNumColumns();
+
+    // Create the dataset
+    HighFive::DataSet dataset = file.createDataSet<double>("array", HighFive::DataSpace(dims));
+    double *temp = new double[dims[0]];
+    this->getArray().host(temp);
+    // Write it
+    dataset.write(temp);
+    // Deleting the temporary variable used for transfer:
+    delete[] temp;
+}
+
+void MatrixData::loadArray(string file_name)
+{
+    HighFive::File file(file_name, HighFive::File::ReadOnly);
+    std::vector<double> temp;
+
+    // We get the dataset
+    HighFive::DataSet dataset = file.getDataSet("array");
+    // We convert the hdf5 dataset to a single dimension vector
+    dataset.read(temp);
+    this->A = array(this->getNumRows(), this->getNumColumns(), temp.data(), afHost);
 }
 
 #endif

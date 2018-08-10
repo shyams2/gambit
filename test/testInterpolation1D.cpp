@@ -3,13 +3,20 @@
 // then provides an approximation A = U * S * V. We check that if the approximation given 
 // reduces with increasing the rank of the approximation.
 
+// In this file, we test the implementation when the points given are in 1D
+
 #include "MatrixData.hpp"
 #include "MatrixFactorizer.hpp"
 
+struct Point
+{
+    array x;
+};
+
 // K(r) = 1 / (1 + r^2)
-array interaction_kernel(array i, array j, array targets, array sources)
+array interaction_kernel(array i, array j, Point targets, Point sources)
 {   
-    array r = targets(i) - sources(j);
+    array r = targets.x(i) - sources.x(j);
     return(1 / (1 + r * r));
 }
 
