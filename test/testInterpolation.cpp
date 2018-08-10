@@ -13,17 +13,40 @@ array interaction_kernel(array i, array j, array targets, array sources)
     return(1 / (1 + r * r));
 }
 
+void compute_error(array Z_approx, array Z)
+{
+    // Calculating the error using L1-norm:
+    double abs_error = af::sum<double>(af::abs(Z_approx - Z));
+    double rel_error = af::sum<double>(af::abs(Z_approx - Z)) / af::sum<double>(af::abs(Z));
+    cout << "Using L1-norm:" << endl;
+    cout << "Absolute Error:" << abs_error << endl;
+    cout << "Relative Error:" << rel_error << endl << endl;
+
+    // Calculating the error using L2-norm:
+    abs_error = af::norm(Z_approx - Z);
+    rel_error = af::norm(Z_approx - Z) / af::norm(Z);
+    cout << "Using L2-norm:" << endl;
+    cout << "Absolute Error:" << abs_error << endl;
+    cout << "Relative Error:" << rel_error << endl << endl;
+
+    // Calculating the error using L∞-norm:
+    abs_error = af::max<double>(Z_approx - Z);
+    rel_error = af::max<double>(Z_approx - Z) / af::max<double>(Z);
+    cout << "Using max-norm:" << endl;
+    cout << "Absolute Error:" << abs_error << endl;
+    cout << "Relative Error:" << rel_error << endl << endl;
+}
+
 int main(int argc, char** argv)
 {
     // Printing backend information:
     af::info();
     cout << endl;
 
-    int size                  = atoi(argv[1]);
-    int rank                  = atoi(argv[2]);
-    string interpolation_type = argv[3];
+    int size = atoi(argv[1]);
+    int rank = atoi(argv[2]);
 
-    //Initializing the array  which we need to approximate:
+    // Initializing the array which we need to approximate:
     // Location of points:
     array x1 =  1.5  - af::randu(size, f64); // r = 0.5 c = 1
     array x2 = -1.5  + af::randu(size, f64); // r = 0.5 c = -1
@@ -33,28 +56,21 @@ int main(int argc, char** argv)
 
     // Initializing the arrays U, S, V:
     array U, S, V;
-    MatrixFactorizer::getInterpolation(U, S, V, rank, interpolation_type, M);
+    cout << "Using Chebyshev Nodes" << endl;
+    MatrixFactorizer::getInterpolation(U, S, V, rank, "CHEBYSHEV", M);
     // Finding Z_approx:
-    array approx = af::matmul(U, S, V);
+    array Z_approx = af::matmul(U, S, V);
+    compute_error(Z_approx, M.getArray());
 
-    // Calculating the error using L1-norm:
-    double abs_error = af::sum<double>(af::abs(approx - M.getArray()));
-    double rel_error = af::sum<double>(af::abs(approx - M.getArray())) / af::sum<double>(af::abs(M.getArray()));
-    cout << "Using L1-norm:" << endl;
-    cout << "Absolute Error:" << abs_error << endl;
-    cout << "Relative Error:" << rel_error << endl << endl;
+    cout << "Using Legendre Nodes" << endl;
+    MatrixFactorizer::getInterpolation(U, S, V, rank, "LEGENDRE", M);
+    // Finding Z_approx:
+    Z_approx = af::matmul(U, S, V);
+    compute_error(Z_approx, M.getArray());
 
-    // Calculating the error using L2-norm:
-    abs_error = af::norm(approx - M.getArray());
-    rel_error = af::norm(approx - M.getArray()) / af::norm(M.getArray());
-    cout << "Using L2-norm:" << endl;
-    cout << "Absolute Error:" << abs_error << endl;
-    cout << "Relative Error:" << rel_error << endl << endl;
-
-    // Calculating the error using L∞-norm:
-    abs_error = af::max<double>(approx - M.getArray());
-    rel_error = af::max<double>(approx - M.getArray()) / af::max<double>(M.getArray());
-    cout << "Using max-norm:" << endl;
-    cout << "Absolute Error:" << abs_error << endl;
-    cout << "Relative Error:" << rel_error << endl << endl;
+    cout << "Using Equispaced Nodes" << endl;
+    MatrixFactorizer::getInterpolation(U, S, V, rank, "EQUISPACED", M);
+    // Finding Z_approx:
+    Z_approx = af::matmul(U, S, V);
+    compute_error(Z_approx, M.getArray());
 }
