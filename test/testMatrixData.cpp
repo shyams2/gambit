@@ -1,10 +1,28 @@
 #include "MatrixData.hpp"
 
+// When the cluster considered is in 1D
 // K(r) = 1 / (1 + r^2)
-array interaction_kernel(array i, array j, array targets, array sources)
+array interaction_kernel_1d(array i, array j, array targets, array sources)
 {   
-    array r = targets(i) - sources(j);
+    array r = targets(i) - (sources.T())(j);
     return(1 / (1 + r * r));
+}
+
+// When the cluster considered is in 2D
+// K(r) = log(r)
+array interaction_kernel_2d(array i, array j, array targets, array sources)
+{   
+    array x_targets = targets(af::span, 0);
+    array x_sources = sources(af::span, 0);
+
+    array y_targets = targets(af::span, 1);
+    array y_sources = sources(af::span, 1);
+
+    array x_diff = x_targets(i) - (x_sources.T())(j);
+    array y_diff = y_targets(i) - (y_sources.T())(j);
+    
+    array r_squared = x_diff * x_diff + y_diff * y_diff;
+    return(0.5 * af::log(r_squared));
 }
 
 int main(int argc, char** argv)
@@ -52,17 +70,18 @@ int main(int argc, char** argv)
 
     cout << endl << "Method 4 of creating an instance of MatrixData" << endl;
     cout << "Providing the blueprint for the way the matrix is generated via a function" << endl;
+    cout << "This is typically performed when we have the kernel function" << endl;
     array target_coords = 1 + af::randu(100, f64);
     array source_coords = 3 + af::randu(200, f64);
-    MatrixData M4(interaction_kernel, target_coords, source_coords);
+    MatrixData M4(interaction_kernel_1d, target_coords, source_coords);
     cout << "Getting the Matrix by using the getArray() method..." << endl;
     A = M4.getArray();
     cout << "Verifying that the expected matrix is returned by the method" << endl;
     // Allowing broadcasting:
     af::gforSet(true);
-    af::array A_expected = interaction_kernel(af::seq(100), af::seq(200), 
-                                              target_coords, source_coords.T()
-                                             );
+    af::array A_expected = interaction_kernel_1d(af::seq(100), af::seq(200), 
+                                                 target_coords, source_coords
+                                                );
     af::gforSet(false);
     cout << "||A - A_expected|| = " << af::mean<double>(A - A_expected) << endl;
 
@@ -72,4 +91,26 @@ int main(int argc, char** argv)
             af::mean<double>(M4.getRow(27) - A_expected.row(27)) << endl;
     cout << "||M.getColumn(47) - A_expected.row(47)|| = " << 
             af::mean<double>(M4.getColumn(47) - A_expected.col(47)) << endl;
+
+    cout << "Estimating the rank of this 1D kernel matrix:" << endl;
+    cout << "Numerical Rank of Matrix = " << M4.estimateRank() << endl;
+
+    // Trying out the 2D kernel:
+    cout << "Trying out the 2D kernel..." << endl;
+    target_coords = 1 + af::randu(100, 2, f64);
+    source_coords = 3 + af::randu(200, 2, f64);
+    MatrixData M5(interaction_kernel_2d, target_coords, source_coords);
+    cout << "Getting the Matrix by using the getArray() method..." << endl;
+    A = M5.getArray();
+    cout << "Verifying that the expected matrix is returned by the method" << endl;
+    // Allowing broadcasting:
+    af::gforSet(true);
+    A_expected = interaction_kernel_2d(af::seq(100), af::seq(200), 
+                                       target_coords, source_coords
+                                      );
+    af::gforSet(false);
+    cout << "||A - A_expected|| = " << af::mean<double>(A - A_expected) << endl;
+
+    cout << "Estimating the rank of this 2D kernel matrix:" << endl;
+    cout << "Numerical Rank of Matrix = " << M5.estimateRank() << endl;
 }

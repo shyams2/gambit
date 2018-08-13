@@ -177,8 +177,8 @@ MatrixData::MatrixData(std::function<array(array, array, array, array)> matrixEn
                       )
 {
     this->matrixEntries = matrixEntries;
-    this->n_rows        = targets.elements();
-    this->n_columns     = sources.elements();
+    this->n_rows        = targets.dims(0);
+    this->n_columns     = sources.dims(0);
 
     this->targets = targets;
     this->sources = sources;
@@ -191,7 +191,7 @@ array MatrixData::buildArray()
     af::gforSet(true);
     array_to_return = this->matrixEntries(af::range(this->n_rows),
                                           af::range(this->n_columns),
-                                          this->targets, (this->sources).T()
+                                          this->targets, this->sources
                                          );
     af::gforSet(false);
 
@@ -207,7 +207,7 @@ array MatrixData::buildArray(int n_rows, int n_columns, array targets, array sou
     af::gforSet(true);
     array_to_return = this->matrixEntries(af::range(n_rows),
                                           af::range(n_columns),
-                                          targets, (sources).T()
+                                          targets, sources
                                          );
     af::gforSet(false);
 
@@ -332,7 +332,7 @@ array MatrixData::getRow(int i)
         af::gforSet(true);
         array_to_return = this->matrixEntries(af::constant(i, 1, u32),
                                               af::range(this->n_columns),
-                                              this->targets, (this->sources).T()
+                                              this->targets, this->sources
                                              );
         af::gforSet(false);
 
@@ -354,7 +354,7 @@ array MatrixData::getColumn(int i)
         af::gforSet(true);
         array_to_return = this->matrixEntries(af::range(this->n_rows),
                                               af::constant(i, 1, u32),
-                                              this->targets, (this->sources).T()
+                                              this->targets, this->sources
                                              );
         af::gforSet(false);
 
