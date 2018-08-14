@@ -9,16 +9,20 @@
 #include "MatrixData.hpp"
 #include "MatrixFactorizer.hpp"
 
-struct Point
-{
-    array x, y;
-};
-
-// K(r) = 1 / (1 + r^2)
+// K(r) = log(r)
 array interaction_kernel(array i, array j, array targets, array sources)
 {   
-    array r = targets(i) - sources(j);
-    return(1 / (1 + r * r));
+    array x_targets = targets(af::span, 0);
+    array x_sources = sources(af::span, 0);
+
+    array y_targets = targets(af::span, 1);
+    array y_sources = sources(af::span, 1);
+
+    array x_diff = x_targets(i) - (x_sources.T())(j);
+    array y_diff = y_targets(i) - (y_sources.T())(j);
+    
+    array r_squared = x_diff * x_diff + y_diff * y_diff;
+    return(0.5 * af::log(r_squared));
 }
 
 void compute_error(array Z_approx, array Z)
@@ -51,23 +55,26 @@ int main(int argc, char** argv)
     af::info();
     cout << endl;
 
-    cout << "The number of elements in the struct:" << sizeof(Point) / sizeof(array) << endl;
-
     int size = atoi(argv[1]);
     int rank = atoi(argv[2]);
 
     // Initializing the array which we need to approximate:
-    // Location of points:
-    array x1 =  1.5  - af::randu(size, f64); // r = 0.5 c = 1
-    array x2 = -1.5  + af::randu(size, f64); // r = 0.5 c = -1
+    // Location of points in 2D:
+    // (p1(:, 0) is x-coords);(p1(:, 1) is y-coords) for p1
+    array p1 =  1.5  - af::randu(size, 2, f64); // r = 0.5 c = 1
+    array p2 = -1.5  + af::randu(size, 2, f64); // r = 0.5 c = -1
 
     // Creating an instance of MatrixData:
-    MatrixData M(interaction_kernel, x1, x2);
+    MatrixData M(interaction_kernel, p1, p2);
 
     // Initializing the arrays U, S, V:
     array U, S, V;
     cout << "Using Chebyshev Nodes" << endl;
     MatrixFactorizer::getInterpolation(U, S, V, rank, "CHEBYSHEV", M);
+    cout << "Printing shape of U, S and V" << endl;
+    cout << "For U = " << U.dims(0) << "," << U.dims(1) << endl;
+    cout << "For S = " << S.dims(0) << "," << S.dims(1) << endl;
+    cout << "For V = " << V.dims(0) << "," << V.dims(1) << endl;
     // Finding Z_approx:
     array Z_approx = af::matmul(U, S, V);
     compute_error(Z_approx, M.getArray());

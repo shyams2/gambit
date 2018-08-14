@@ -94,6 +94,7 @@ int main(int argc, char** argv)
 
     cout << "Estimating the rank of this 1D kernel matrix:" << endl;
     cout << "Numerical Rank of Matrix = " << M4.estimateRank() << endl;
+    cout << "Dimensionality = " << M4.getDimensionality() << endl << endl;
 
     // Trying out the 2D kernel:
     cout << "Trying out the 2D kernel..." << endl;
@@ -113,4 +114,5 @@ int main(int argc, char** argv)
 
     cout << "Estimating the rank of this 2D kernel matrix:" << endl;
     cout << "Numerical Rank of Matrix = " << M5.estimateRank() << endl;
+    cout << "Dimensionality = " << M5.getDimensionality() << endl;
 }

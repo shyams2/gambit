@@ -42,6 +42,8 @@ private:
     int n_rows, n_columns;
     // The following get used when the kernel function is passed during instantiation:
     std::function<array(array, array, array, array)> matrixEntries;
+    // Dimensionality of the points considered:
+    int n_dims;
     array sources, targets;
 
 public:
@@ -109,6 +111,8 @@ public:
     // Returns the number of rows and columns:
     size_t getNumRows();
     size_t getNumColumns();
+    // Gets the dimensionality:
+    size_t getDimensionality();
     // Returns the source and target coordinates:
     array getTargetCoordinates();
     array getSourceCoordinates();
@@ -182,6 +186,12 @@ MatrixData::MatrixData(std::function<array(array, array, array, array)> matrixEn
 
     this->targets = targets;
     this->sources = sources;
+
+    this->n_dims  = 1;
+    if(targets.elements() != targets.dims(0))
+    {
+        this->n_dims = targets.dims(1);
+    }
 }
 
 array MatrixData::buildArray()
@@ -375,6 +385,11 @@ size_t MatrixData::getNumRows()
 size_t MatrixData::getNumColumns()
 {
     return this->n_columns;
+}
+
+size_t MatrixData::getDimensionality()
+{
+    return this->n_dims;
 }
 
 array MatrixData::getTargetCoordinates()

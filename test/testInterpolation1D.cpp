@@ -8,15 +8,10 @@
 #include "MatrixData.hpp"
 #include "MatrixFactorizer.hpp"
 
-struct Point
-{
-    array x;
-};
-
 // K(r) = 1 / (1 + r^2)
-array interaction_kernel(array i, array j, Point targets, Point sources)
+array interaction_kernel(array i, array j, array targets, array sources)
 {   
-    array r = targets.x(i) - sources.x(j);
+    array r = targets(i) - (sources.T())(j);
     return(1 / (1 + r * r));
 }
 

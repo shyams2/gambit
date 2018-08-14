@@ -77,7 +77,7 @@ array getL2L(array x, array x_nodes)
 
     // Allowing broadcasting:
     af::gforSet(true);
-    x      = x      - x_nodes(af::span, 0).T();
+    x       = x       - x_nodes(af::span, 0).T();
     x_nodes = x_nodes - x_nodes(af::span, 0).T();
     af::gforSet(false);
 
@@ -114,17 +114,6 @@ namespace MatrixFactorizer
 {
     void getInterpolation(array& U, array& S, array& V, int rank, string interpolation_type, MatrixData M) 
     {
-        array target_coords = M.getTargetCoordinates();
-        array source_coords = M.getSourceCoordinates();
-
-        // Determining the center and radius of targets:
-        double c_targets = 0.5 * (af::max<double>(target_coords) + af::min<double>(target_coords));
-        double r_targets = 0.5 * (af::max<double>(target_coords) - af::min<double>(target_coords));
-
-        // Determining the center and radius of sources:
-        double c_sources = 0.5 * (af::max<double>(source_coords) + af::min<double>(source_coords));
-        double r_sources = 0.5 * (af::max<double>(source_coords) - af::min<double>(source_coords));
-    
         array standard_nodes;
         // Obtaining the standard Chebyshev nodes:
         if(interpolation_type == "CHEBYSHEV")
@@ -151,19 +140,123 @@ namespace MatrixFactorizer
             exit(1);
         }
 
-        // Obtain the scaled Chebyshev nodes for the targets:
-        array nodes_targets, nodes_sources;
-        scalePoints(0, 1, standard_nodes, c_targets, r_targets, nodes_targets);
-        scalePoints(0, 1, standard_nodes, c_sources, r_sources, nodes_sources);
+        array target_coords = M.getTargetCoordinates();
+        array source_coords = M.getSourceCoordinates();
 
-        // Standard Locations of the coordinates:
-        array standard_targets, standard_sources;
-        scalePoints(c_targets, r_targets, target_coords, 0, 1, standard_targets);
-        scalePoints(c_sources, r_sources, source_coords, 0, 1, standard_sources);
-    
-        U = getL2L(standard_targets, standard_nodes);
-        S = getM2L(nodes_targets, nodes_sources, M);
-        V = getL2L(standard_sources, standard_nodes).T();
+        if(M.getDimensionality() == 1)
+        {
+            // Determining the center and radius of targets:
+            double c_targets = 0.5 * (af::max<double>(target_coords) + af::min<double>(target_coords));
+            double r_targets = 0.5 * (af::max<double>(target_coords) - af::min<double>(target_coords));
+
+            // Determining the center and radius of sources:
+            double c_sources = 0.5 * (af::max<double>(source_coords) + af::min<double>(source_coords));
+            double r_sources = 0.5 * (af::max<double>(source_coords) - af::min<double>(source_coords));
+
+            // Obtain the scaled Chebyshev nodes for the targets:
+            array nodes_targets, nodes_sources;
+            scalePoints(0, 1, standard_nodes, c_targets, r_targets, nodes_targets);
+            scalePoints(0, 1, standard_nodes, c_sources, r_sources, nodes_sources);
+
+            // Standard Locations of the coordinates:
+            array standard_targets, standard_sources;
+            scalePoints(c_targets, r_targets, target_coords, 0, 1, standard_targets);
+            scalePoints(c_sources, r_sources, source_coords, 0, 1, standard_sources);
+        
+            U = getL2L(standard_targets, standard_nodes);
+            S = getM2L(nodes_targets, nodes_sources, M);
+            V = getL2L(standard_sources, standard_nodes).T();
+        }
+
+        else if(M.getDimensionality() == 2)
+        {
+            // Determining the center and radius of targets:
+            double c_x_targets = 0.5 * (  af::max<double>(target_coords(af::span, 0)) 
+                                        + af::min<double>(target_coords(af::span, 0))
+                                       );
+            double r_x_targets = 0.5 * (  af::max<double>(target_coords(af::span, 0)) 
+                                        - af::min<double>(target_coords(af::span, 0))
+                                       );
+
+            double c_y_targets = 0.5 * (  af::max<double>(target_coords(af::span, 1)) 
+                                        + af::min<double>(target_coords(af::span, 1))
+                                       );
+            double r_y_targets = 0.5 * (  af::max<double>(target_coords(af::span, 1)) 
+                                        - af::min<double>(target_coords(af::span, 1))
+                                       );
+
+            cout << "For the targets:" << endl;
+            cout << "r = (" << r_x_targets << "," << r_y_targets << ")" << endl;
+            cout << "c = (" << c_x_targets << "," << c_y_targets << ")" << endl;
+
+            // Determining the center and radius of sources:
+            double c_x_sources = 0.5 * (  af::max<double>(source_coords(af::span, 0)) 
+                                        + af::min<double>(source_coords(af::span, 0))
+                                       );
+            double r_x_sources = 0.5 * (  af::max<double>(source_coords(af::span, 0)) 
+                                        - af::min<double>(source_coords(af::span, 0))
+                                       );
+
+            double c_y_sources = 0.5 * (  af::max<double>(source_coords(af::span, 1)) 
+                                        + af::min<double>(source_coords(af::span, 1))
+                                       );
+            double r_y_sources = 0.5 * (  af::max<double>(source_coords(af::span, 1)) 
+                                        - af::min<double>(source_coords(af::span, 1))
+                                       );
+
+            cout << "For the sources:" << endl;
+            cout << "r = (" << r_x_sources << "," << r_y_sources << ")" << endl;
+            cout << "c = (" << c_x_sources << "," << c_y_sources << ")" << endl;
+        
+            // Obtain the scaled Chebyshev nodes for the targets:
+            array nodes_targets, nodes_sources, nodes_targets_x, nodes_targets_y, nodes_sources_x, nodes_sources_y;
+            scalePoints(0, 1, standard_nodes, c_x_targets, r_x_targets, nodes_targets_x);
+            scalePoints(0, 1, standard_nodes, c_y_targets, r_y_targets, nodes_targets_y);
+            scalePoints(0, 1, standard_nodes, c_x_sources, r_x_sources, nodes_sources_x);
+            scalePoints(0, 1, standard_nodes, c_y_sources, r_y_sources, nodes_sources_y);
+
+            // Joining along axis-1 so that the function can be passed to M2L:
+            nodes_targets = af::join(1, nodes_targets_x, nodes_targets_y);
+            nodes_sources = af::join(1, nodes_sources_x, nodes_sources_y);
+
+            af_print(nodes_targets);
+            af_print(nodes_sources);
+
+            // Standard Locations of the coordinates:
+            array standard_targets_x, standard_targets_y, standard_sources_x, standard_sources_y;
+            scalePoints(c_x_targets, r_x_targets, target_coords(af::span, 0), 0, 1, standard_targets_x);
+            scalePoints(c_y_targets, r_y_targets, target_coords(af::span, 1), 0, 1, standard_targets_y);
+            scalePoints(c_x_sources, r_x_sources, source_coords(af::span, 0), 0, 1, standard_sources_x);
+            scalePoints(c_y_sources, r_y_sources, source_coords(af::span, 1), 0, 1, standard_sources_y);
+
+            array U_x = getL2L(standard_targets_x, standard_nodes);
+            array U_y = getL2L(standard_targets_y, standard_nodes);
+         
+            U = af::constant(0, standard_targets_x.dims(0), rank * rank, f64);
+            for(int i = 0; i < standard_targets_x.dims(0); i++)
+            {
+                for(int j = 0; j < rank * rank; j++)
+                {
+                    U(i, j) = U_x(i, j % rank) * U_x(i, j / rank);
+                }
+            }       
+
+            S = getM2L(nodes_targets, nodes_sources, M);
+
+            array V_x = getL2L(standard_sources_x, standard_nodes);
+            array V_y = getL2L(standard_sources_y, standard_nodes);
+
+            V = af::constant(0, standard_sources_x.dims(0), rank * rank, f64);
+            for(int i = 0; i < standard_sources_x.dims(0); i++)
+            {
+                for(int j = 0; j < rank * rank; j++)
+                {
+                    V(i, j) = V_x(i, j % rank) * V_y(i, j / rank);
+                }
+            }
+
+            cout << "DONE!" << endl;       
+        }
     }
 }
 
