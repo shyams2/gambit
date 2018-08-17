@@ -75,6 +75,8 @@ int main(int argc, char** argv)
     cout << "For U = " << U.dims(0) << "," << U.dims(1) << endl;
     cout << "For S = " << S.dims(0) << "," << S.dims(1) << endl;
     cout << "For V = " << V.dims(0) << "," << V.dims(1) << endl;
+    // cout << "Shape of Z =" << M.getArray().dims(0) << "," << M.getArray().dims(1) << endl;
+
     // Finding Z_approx:
     array Z_approx = af::matmul(U, S, V);
     compute_error(Z_approx, M.getArray());

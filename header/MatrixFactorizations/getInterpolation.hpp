@@ -105,7 +105,7 @@ array getL2L(array x, array x_nodes)
 array getM2L(array nodes_1, array nodes_2, MatrixData M)
 {
     // Evaluating the Kernel function at the Chebyshev nodes:
-    return M.buildArray(int(nodes_1.elements()), int(nodes_2.elements()),
+    return M.buildArray(int(nodes_1.dims(0)), int(nodes_2.dims(0)),
                         nodes_1, nodes_2
                        );
 }
@@ -215,12 +215,15 @@ namespace MatrixFactorizer
             scalePoints(0, 1, standard_nodes, c_x_sources, r_x_sources, nodes_sources_x);
             scalePoints(0, 1, standard_nodes, c_y_sources, r_y_sources, nodes_sources_y);
 
+            // Performing meshgrid operations:
+            nodes_targets_x = af::flat(af::tile(nodes_targets_x, 1, rank));
+            nodes_sources_x = af::flat(af::tile(nodes_sources_x, 1, rank));
+            nodes_targets_y = af::flat(af::tile(nodes_targets_y.T(), rank));
+            nodes_sources_y = af::flat(af::tile(nodes_sources_y.T(), rank));
+
             // Joining along axis-1 so that the function can be passed to M2L:
             nodes_targets = af::join(1, nodes_targets_x, nodes_targets_y);
             nodes_sources = af::join(1, nodes_sources_x, nodes_sources_y);
-
-            af_print(nodes_targets);
-            af_print(nodes_sources);
 
             // Standard Locations of the coordinates:
             array standard_targets_x, standard_targets_y, standard_sources_x, standard_sources_y;
@@ -237,7 +240,7 @@ namespace MatrixFactorizer
             {
                 for(int j = 0; j < rank * rank; j++)
                 {
-                    U(i, j) = U_x(i, j % rank) * U_x(i, j / rank);
+                    U(i, j) = U_x(i, j / rank) * U_x(i, j % rank);
                 }
             }       
 
@@ -251,10 +254,12 @@ namespace MatrixFactorizer
             {
                 for(int j = 0; j < rank * rank; j++)
                 {
-                    V(i, j) = V_x(i, j % rank) * V_y(i, j / rank);
+                    V(i, j) = V_x(i, j / rank) * V_y(i, j % rank);
                 }
             }
 
+            // Taking transpose of V:
+            V = V.T();
             cout << "DONE!" << endl;       
         }
     }

@@ -1,4 +1,4 @@
-COMPILER_OPTIONS= -Wall -O3 -std=c++11 -g
+COMPILER_OPTIONS= -Wall -fopenmp -O3 -std=c++11 -g
 # Using h5c++ to make possible file writing using HDF5:
 CC              = h5c++ $(COMPILER_OPTIONS)
 # Change this to:
