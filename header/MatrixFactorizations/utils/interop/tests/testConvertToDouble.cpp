@@ -3,52 +3,35 @@
 // NOTE: This function also retains the 2D ordering:
 
 #include "../convertToDouble.hpp"
-// #include <iostream>
-// #include "Eigen/Dense"
-
-void printElementsOfArray(double *x, int n)
-{
-    for(int i = 0; i < n; i++)
-    {
-        std::cout << x[i] << std::endl;
-    }
-}
+#include "../../printElementsOfArray.hpp"
 
 int main()
 {
     // First testing with Eigen:
-    Eigen::MatrixXd a(6 , 5);
-    a.setRandom();
+    size_t n_rows = 6;
+    size_t n_cols = 5;
 
+    Eigen::MatrixXd a(n_rows, n_cols);
+    a.setRandom();
     std::cout << a << std::endl << std::endl;
 
-    // // printElementsOfArray(a.data(), 30);
-    // double **b = new double*[6];
+    double **b;
+    convertToDouble(a, b);
+    // Printing the array:
+    std::cout << std::endl;
+    printElementsOfArray(b, n_rows, n_cols);
+    std::cout << std::endl;
 
-    // for(int i = 0; i < 6; i++)
-    // {   
-    //     b[i] = new double[5];
-    // }
+    // Now testing with arrayfire:
+    af::array c = af::randu(n_rows, n_cols, f64);
+    af_print(c);    
 
-    // for(int j = 0;j < 5; j++)
-    // {
-    //     for(int i = 0;i < 6; i++)
-    //     {   
-    //          b[i][j] = a.data()[i + j * 6];
-    //     }
-    // }
+    double **d;
+    convertToDouble(c, d);
+    // Printing the array:
+    std::cout << std::endl;
+    printElementsOfArray(d, n_rows, n_cols);
+    std::cout << std::endl;
 
-    // for(int i = 0; i < 6; i++)
-    // {
-    //     for(int j = 0; j < 5; j++)
-    //     {
-    //         std::cout << b[i][j] << "  ";
-    //     }
-    //     std::cout << std::endl;
-    // }
-
-    //     b[i][j] = a(i, j);
-    // }
-    double **b = convertToDouble(a);
     return 0;
 }

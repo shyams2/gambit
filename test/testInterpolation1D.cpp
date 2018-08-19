@@ -7,36 +7,13 @@
 
 #include "MatrixData.hpp"
 #include "MatrixFactorizer.hpp"
+#include "utils/computeError.hpp"
 
 // K(r) = 1 / (1 + r^2)
 array interaction_kernel(array i, array j, array targets, array sources)
 {   
     array r = targets(i) - (sources.T())(j);
     return(1 / (1 + r * r));
-}
-
-void compute_error(array Z_approx, array Z)
-{
-    // Calculating the error using L1-norm:
-    double abs_error = af::sum<double>(af::abs(Z_approx - Z));
-    double rel_error = af::sum<double>(af::abs(Z_approx - Z)) / af::sum<double>(af::abs(Z));
-    cout << "Using L1-norm:" << endl;
-    cout << "Absolute Error:" << abs_error << endl;
-    cout << "Relative Error:" << rel_error << endl << endl;
-
-    // Calculating the error using L2-norm:
-    abs_error = af::norm(Z_approx - Z);
-    rel_error = af::norm(Z_approx - Z) / af::norm(Z);
-    cout << "Using L2-norm:" << endl;
-    cout << "Absolute Error:" << abs_error << endl;
-    cout << "Relative Error:" << rel_error << endl << endl;
-
-    // Calculating the error using L∞-norm:
-    abs_error = af::max<double>(Z_approx - Z);
-    rel_error = af::max<double>(Z_approx - Z) / af::max<double>(Z);
-    cout << "Using max-norm:" << endl;
-    cout << "Absolute Error:" << abs_error << endl;
-    cout << "Relative Error:" << rel_error << endl << endl;
 }
 
 int main(int argc, char** argv)
@@ -62,17 +39,17 @@ int main(int argc, char** argv)
     MatrixFactorizer::getInterpolation(U, S, V, rank, "CHEBYSHEV", M);
     // Finding Z_approx:
     array Z_approx = af::matmul(U, S, V);
-    compute_error(Z_approx, M.getArray());
+    computeError(Z_approx, M.getArray());
 
     cout << "Using Legendre Nodes" << endl;
     MatrixFactorizer::getInterpolation(U, S, V, rank, "LEGENDRE", M);
     // Finding Z_approx:
     Z_approx = af::matmul(U, S, V);
-    compute_error(Z_approx, M.getArray());
+    computeError(Z_approx, M.getArray());
 
     cout << "Using Equispaced Nodes" << endl;
     MatrixFactorizer::getInterpolation(U, S, V, rank, "EQUISPACED", M);
     // Finding Z_approx:
     Z_approx = af::matmul(U, S, V);
-    compute_error(Z_approx, M.getArray());
+    computeError(Z_approx, M.getArray());
 }
