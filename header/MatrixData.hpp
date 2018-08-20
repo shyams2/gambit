@@ -37,14 +37,21 @@ class MatrixData
 
 private:
     // array being factorized
-    // NOTE: Not necessarily allocated:
-    array A; 
-    int n_rows, n_columns;
-    // The following get used when the kernel function is passed during instantiation:
-    std::function<array(array, array, array, array)> matrixEntries;
+    // NOTE: Not necessarily allocated
+    array A;
+    // Number of rows and columns:
+    size_t n_rows, n_columns;
     // Dimensionality of the points considered:
-    int n_dims;
-    array sources, targets;
+    size_t n_dims;
+    // The following get used when the kernel function is passed during instantiation:
+    std::function<array(array, array, array, array)> matrixEntriesAF;
+    // When double* is used instead:
+    std::function<double(unsigned, unsigned, double*, size_t, double*, size_t, size_t)> matrixEntriesDouble;
+    // If the data is passed in AF form:
+    array sources_af, targets_af;
+    // If the data is passed in double* form:
+    double *sources, *targets;
+    string array_datatype; // whether af::array or double*
 
 public:
 
@@ -73,6 +80,12 @@ public:
     // sources - 1D array of source locations;
     MatrixData(std::function<array(array, array, array, array)> matrixEntries,
                array targets, array sources
+              );
+
+    // Alternate form when the arguments to the function are double instead of af::array:
+    MatrixData(std::function<double(unsigned, unsigned, double*, size_t, double*, size_t, size_t)> matrixEntries,
+               double* targets, const size_t n_targets, double* sources, const size_t n_sources,
+               const size_t n_dim
               );
 
     // The buildArray method of this class would give a matrix of the form:
@@ -180,18 +193,34 @@ MatrixData::MatrixData(std::function<array(array, array, array, array)> matrixEn
                        array targets, array sources
                       )
 {
-    this->matrixEntries = matrixEntries;
-    this->n_rows        = targets.dims(0);
-    this->n_columns     = sources.dims(0);
+    this->matrixEntriesAF = matrixEntries;
+    this->n_rows          = targets.dims(0);
+    this->n_columns       = sources.dims(0);
 
-    this->targets = targets;
-    this->sources = sources;
+    this->targets_af = targets;
+    this->sources_af = sources;
 
     this->n_dims  = 1;
+
     if(targets.elements() != targets.dims(0))
     {
         this->n_dims = targets.dims(1);
     }
+}
+
+MatrixData::MatrixData(std::function<double(unsigned, unsigned, double*, size_t, double*, size_t, size_t)> matrixEntries,
+                       double* targets, const size_t n_targets, double* sources, const size_t n_sources,
+                       const size_t n_dims
+                      )
+{
+    this->matrixEntriesDouble = matrixEntries;
+    this->n_rows              = n_targets;
+    this->n_columns           = n_sources;
+
+    this->targets = targets;
+    this->sources = sources;
+
+    this->n_dims  = n_dims;
 }
 
 array MatrixData::buildArray()
@@ -199,10 +228,10 @@ array MatrixData::buildArray()
     array array_to_return;
     // Allowing broadcasting:
     af::gforSet(true);
-    array_to_return = this->matrixEntries(af::range(this->n_rows),
-                                          af::range(this->n_columns),
-                                          this->targets, this->sources
-                                         );
+    array_to_return = this->matrixEntriesAF(af::range(this->n_rows),
+                                            af::range(this->n_columns),
+                                            this->targets_af, this->sources_af
+                                           );
     af::gforSet(false);
 
     return array_to_return;
@@ -215,17 +244,17 @@ array MatrixData::buildArray(int n_rows, int n_columns, array targets, array sou
     array array_to_return;
     // Allowing broadcasting:
     af::gforSet(true);
-    array_to_return = this->matrixEntries(af::range(n_rows),
-                                          af::range(n_columns),
-                                          targets, sources
-                                         );
+    array_to_return = this->matrixEntriesAF(af::range(n_rows),
+                                            af::range(n_columns),
+                                            targets, sources
+                                           );
     af::gforSet(false);
 
     return array_to_return;
 }
 
 // TODO: Look into faster methods instead of SVD:
-int MatrixData::estimateRank(double tolerance = 1e-12) 
+int MatrixData::estimateRank(double tolerance = 1e-16) 
 {
     // Temporary array that exists only in the scope of this function:
     array temp;
@@ -340,10 +369,10 @@ array MatrixData::getRow(int i)
         array array_to_return;
         // Allowing broadcasting:
         af::gforSet(true);
-        array_to_return = this->matrixEntries(af::constant(i, 1, u32),
-                                              af::range(this->n_columns),
-                                              this->targets, this->sources
-                                             );
+        array_to_return = this->matrixEntriesAF(af::constant(i, 1, u32),
+                                                af::range(this->n_columns),
+                                                this->targets_af, this->sources_af
+                                               );
         af::gforSet(false);
 
         return array_to_return;
@@ -362,10 +391,10 @@ array MatrixData::getColumn(int i)
         array array_to_return;
         // Allowing broadcasting:
         af::gforSet(true);
-        array_to_return = this->matrixEntries(af::range(this->n_rows),
-                                              af::constant(i, 1, u32),
-                                              this->targets, this->sources
-                                             );
+        array_to_return = this->matrixEntriesAF(af::range(this->n_rows),
+                                                af::constant(i, 1, u32),
+                                                this->targets_af, this->sources_af
+                                               );
         af::gforSet(false);
 
         return array_to_return;
@@ -394,12 +423,12 @@ size_t MatrixData::getDimensionality()
 
 array MatrixData::getTargetCoordinates()
 {
-    return this->targets;
+    return this->targets_af;
 }
 
 array MatrixData::getSourceCoordinates()
 {
-    return this->sources;
+    return this->sources_af;
 }
 
 void MatrixData::dumpArray(string file_name)

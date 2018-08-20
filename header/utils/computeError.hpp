@@ -6,7 +6,7 @@
 using std::endl;
 using std::cout;
 
-void compute_error(af::array &Z_approx, af::array &Z, string &error_type)
+void computeError(const af::array &Z_approx, const af::array &Z, const string &error_type)
 {
     double abs_error, rel_error;
 
@@ -18,14 +18,14 @@ void compute_error(af::array &Z_approx, af::array &Z, string &error_type)
     }
 
     // Calculating the error using L2-norm:
-    if(error_type == "L2")
+    else if(error_type == "L2")
     {
         abs_error = af::norm(Z_approx - Z);
         rel_error = af::norm(Z_approx - Z) / af::norm(Z);
     }
 
     // Calculating the error using L∞-norm:
-    if(error_type == "L-inf" || error_type == "L-max")
+    else if(error_type == "L-inf" || error_type == "L-max")
     {
         abs_error = af::max<double>(Z_approx - Z);
         rel_error = af::max<double>(Z_approx - Z) / af::max<double>(Z);
@@ -39,4 +39,14 @@ void compute_error(af::array &Z_approx, af::array &Z, string &error_type)
 
     cout << "Absolute Error:" << abs_error << endl;
     cout << "Relative Error:" << rel_error << endl << endl;
+}
+
+void printAllErrorNorms(const af::array &Z_approx, const af::array &Z)
+{
+    cout << "Using L1 norm of error:" << endl;
+    computeError(Z_approx, Z, "L1");
+    cout << "Using L2 norm of error:" << endl;
+    computeError(Z_approx, Z, "L2");
+    cout << "Using L-inf norm of error:" << endl;
+    computeError(Z_approx, Z, "L-inf");
 }

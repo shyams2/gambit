@@ -9,7 +9,7 @@ CC              = h5c++ $(COMPILER_OPTIONS)
 LIBS            = -lafcpu
 LIB_PATHS       = -L $(AF_PATH)/lib
 INCLUDES        = -I $(AF_PATH)/include -I $(EIGEN_PATH) -I $(HIGHFIVE_PATH)/include -I ./header
-SOURCES         = ./test/testInterpolation2D.cpp
+SOURCES         = ./test/testInterpolation/testInterpolation2D.cpp
 EXECUTABLE      = ./exec/testInterpolation2D
 
 all:

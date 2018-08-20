@@ -18,14 +18,14 @@ void flattenMatrix(double (&input_array)[n_rows][n_cols], double *&flattenedArra
 }
 
 template <size_t n_rows, size_t n_cols>
-af::array convertToAF(double (&input_array)[n_rows][n_cols])
+void convertToAF(const double (&input_array)[n_rows][n_cols], af::array &output_array)
 {
     double *ptrToFlattenedArray; //pointer to array
     flattenMatrix(input_array, ptrToFlattenedArray);
-    return af::array(n_rows, n_cols, ptrToFlattenedArray);
+    output_array = af::array(n_rows, n_cols, ptrToFlattenedArray);
 }
 
-af::array convertToAF(Eigen::MatrixXd &input_array)
+void convertToAF(Eigen::MatrixXd &input_array, af::array &output_array)
 {
-    return af::array(input_array.rows(), input_array.cols(), input_array.data());
+    output_array = af::array(input_array.rows(), input_array.cols(), input_array.data());
 }
