@@ -185,12 +185,6 @@ namespace MatrixFactorizer
                                         - af::min<double>(target_coords(af::span, 1))
                                        );
 
-            c_x_targets = c_y_targets = -1;
-            r_x_targets = r_y_targets = 0.5;
-
-            cout << "r = (" << r_x_targets << "," << r_y_targets << ")" << endl;
-            cout << "c = (" << c_x_targets << "," << c_y_targets << ")" << endl;
-
             // Determining the center and radius of sources:
             double c_x_sources = 0.5 * (  af::max<double>(source_coords(af::span, 0)) 
                                         + af::min<double>(source_coords(af::span, 0))
@@ -206,13 +200,6 @@ namespace MatrixFactorizer
                                         - af::min<double>(source_coords(af::span, 1))
                                        );
 
-            c_x_sources = c_y_sources = 1;
-            r_x_sources = r_y_sources = 0.5;
-
-            cout << "For the sources:" << endl;
-            cout << "r = (" << r_x_sources << "," << r_y_sources << ")" << endl;
-            cout << "c = (" << c_x_sources << "," << c_y_sources << ")" << endl;
-        
             // Obtain the scaled Chebyshev nodes for the targets:
             array nodes_targets, nodes_sources, nodes_targets_x, nodes_targets_y, nodes_sources_x, nodes_sources_y;
             scalePoints(0, 1, standard_nodes, c_x_targets, r_x_targets, nodes_targets_x);
@@ -239,27 +226,19 @@ namespace MatrixFactorizer
             array U_x = getL2L(standard_targets_x, standard_nodes);
             array U_y = getL2L(standard_targets_y, standard_nodes);
             
-            af::print("U_x", U_x, 16);
-            af::print("U_y", U_y, 16);
-
             U = af::constant(0, standard_targets_x.dims(0), rank * rank, f64);
             for(int i = 0; i < standard_targets_x.dims(0); i++)
             {
                 for(int j = 0; j < rank * rank; j++)
                 {
-                    U(i, j) = U_x(i, j % rank) * U_x(i, j / rank);
+                    U(i, j) = U_x(i, j % rank) * U_y(i, j / rank);
                 }
             }
-
-            af::print("U", U, 16);
 
             S = getM2L(nodes_targets, nodes_sources, M);
 
             array V_x = getL2L(standard_sources_x, standard_nodes);
             array V_y = getL2L(standard_sources_y, standard_nodes);
-
-            // af::print("V_x", V_x, 16);
-            // af::print("V_y", V_y, 16);
 
             V = af::constant(0, standard_sources_x.dims(0), rank * rank, f64);
             for(int i = 0; i < standard_sources_x.dims(0); i++)
@@ -274,110 +253,123 @@ namespace MatrixFactorizer
             V = V.T();
         }
 
-        // else if(M.getDimensionality() == 3)
-        // {
-        //     // Determining the center and radius of targets:
-        //     double c_x_targets = 0.5 * (  af::max<double>(target_coords(af::span, 0)) 
-        //                                 + af::min<double>(target_coords(af::span, 0))
-        //                                );
-        //     double r_x_targets = 0.5 * (  af::max<double>(target_coords(af::span, 0)) 
-        //                                 - af::min<double>(target_coords(af::span, 0))
-        //                                );
+        else if(M.getDimensionality() == 3)
+        {
+            // Determining the center and radius of targets:
+            double c_x_targets = 0.5 * (  af::max<double>(target_coords(af::span, 0)) 
+                                        + af::min<double>(target_coords(af::span, 0))
+                                       );
+            double r_x_targets = 0.5 * (  af::max<double>(target_coords(af::span, 0)) 
+                                        - af::min<double>(target_coords(af::span, 0))
+                                       );
 
-        //     double c_y_targets = 0.5 * (  af::max<double>(target_coords(af::span, 1)) 
-        //                                 + af::min<double>(target_coords(af::span, 1))
-        //                                );
-        //     double r_y_targets = 0.5 * (  af::max<double>(target_coords(af::span, 1)) 
-        //                                 - af::min<double>(target_coords(af::span, 1))
-        //                                );
+            double c_y_targets = 0.5 * (  af::max<double>(target_coords(af::span, 1)) 
+                                        + af::min<double>(target_coords(af::span, 1))
+                                       );
+            double r_y_targets = 0.5 * (  af::max<double>(target_coords(af::span, 1)) 
+                                        - af::min<double>(target_coords(af::span, 1))
+                                       );
 
-        //     double c_z_targets = 0.5 * (  af::max<double>(target_coords(af::span, 2)) 
-        //                                 + af::min<double>(target_coords(af::span, 2))
-        //                                );
-        //     double r_z_targets = 0.5 * (  af::max<double>(target_coords(af::span, 2)) 
-        //                                 - af::min<double>(target_coords(af::span, 2))
-        //                                );
+            double c_z_targets = 0.5 * (  af::max<double>(target_coords(af::span, 2)) 
+                                        + af::min<double>(target_coords(af::span, 2))
+                                       );
+            double r_z_targets = 0.5 * (  af::max<double>(target_coords(af::span, 2)) 
+                                        - af::min<double>(target_coords(af::span, 2))
+                                       );
 
-        //     // Determining the center and radius of sources:
-        //     double c_x_sources = 0.5 * (  af::max<double>(source_coords(af::span, 0)) 
-        //                                 + af::min<double>(source_coords(af::span, 0))
-        //                                );
-        //     double r_x_sources = 0.5 * (  af::max<double>(source_coords(af::span, 0)) 
-        //                                 - af::min<double>(source_coords(af::span, 0))
-        //                                );
+            // Determining the center and radius of sources:
+            double c_x_sources = 0.5 * (  af::max<double>(source_coords(af::span, 0)) 
+                                        + af::min<double>(source_coords(af::span, 0))
+                                       );
+            double r_x_sources = 0.5 * (  af::max<double>(source_coords(af::span, 0)) 
+                                        - af::min<double>(source_coords(af::span, 0))
+                                       );
 
-        //     double c_y_sources = 0.5 * (  af::max<double>(source_coords(af::span, 1)) 
-        //                                 + af::min<double>(source_coords(af::span, 1))
-        //                                );
-        //     double r_y_sources = 0.5 * (  af::max<double>(source_coords(af::span, 1)) 
-        //                                 - af::min<double>(source_coords(af::span, 1))
-        //                                );
+            double c_y_sources = 0.5 * (  af::max<double>(source_coords(af::span, 1)) 
+                                        + af::min<double>(source_coords(af::span, 1))
+                                       );
+            double r_y_sources = 0.5 * (  af::max<double>(source_coords(af::span, 1)) 
+                                        - af::min<double>(source_coords(af::span, 1))
+                                       );
 
-        //     double c_z_sources = 0.5 * (  af::max<double>(source_coords(af::span, 1)) 
-        //                                 + af::min<double>(source_coords(af::span, 1))
-        //                                );
+            double c_z_sources = 0.5 * (  af::max<double>(source_coords(af::span, 1)) 
+                                        + af::min<double>(source_coords(af::span, 1))
+                                       );
 
-        //     double r_z_sources = 0.5 * (  af::max<double>(source_coords(af::span, 2)) 
-        //                                 - af::min<double>(source_coords(af::span, 2))
-        //                                );
+            double r_z_sources = 0.5 * (  af::max<double>(source_coords(af::span, 2)) 
+                                        - af::min<double>(source_coords(af::span, 2))
+                                       );
 
-        //     // Obtain the scaled Chebyshev nodes for the targets:
-        //     array nodes_targets, nodes_sources,
-        //     array nodes_targets_x, nodes_targets_y, nodes_targets_z; 
-        //     array nodes_sources_x, nodes_sources_y, nodes_sources_z;
+            // Obtain the scaled Chebyshev nodes for the targets:
+            array nodes_targets, nodes_sources;
+            array nodes_targets_x, nodes_targets_y, nodes_targets_z; 
+            array nodes_sources_x, nodes_sources_y, nodes_sources_z;
 
-        //     scalePoints(0, 1, standard_nodes, c_x_targets, r_x_targets, nodes_targets_x);
-        //     scalePoints(0, 1, standard_nodes, c_y_targets, r_y_targets, nodes_targets_y);
-        //     scalePoints(0, 1, standard_nodes, c_x_sources, r_x_sources, nodes_sources_x);
-        //     scalePoints(0, 1, standard_nodes, c_y_sources, r_y_sources, nodes_sources_y);
-        //     scalePoints(0, 1, standard_nodes, c_x_sources, r_x_sources, nodes_sources_x);
-        //     scalePoints(0, 1, standard_nodes, c_y_sources, r_y_sources, nodes_sources_y);
+            scalePoints(0, 1, standard_nodes, c_x_targets, r_x_targets, nodes_targets_x);
+            scalePoints(0, 1, standard_nodes, c_y_targets, r_y_targets, nodes_targets_y);
+            scalePoints(0, 1, standard_nodes, c_z_targets, r_z_targets, nodes_targets_z);
 
-        //     nodes_targets_x = af::flat(af::tile(nodes_targets_x, 1, rank));
-        //     nodes_sources_x = af::flat(af::tile(nodes_sources_x, 1, rank));
-        //     nodes_targets_y = af::flat(af::tile(nodes_targets_y.T(), rank));
-        //     nodes_sources_y = af::flat(af::tile(nodes_sources_y.T(), rank));
+            scalePoints(0, 1, standard_nodes, c_x_sources, r_x_sources, nodes_sources_x);
+            scalePoints(0, 1, standard_nodes, c_y_sources, r_y_sources, nodes_sources_y);
+            scalePoints(0, 1, standard_nodes, c_z_sources, r_z_sources, nodes_sources_z);
 
-        //     // Joining along axis-1 so that the function can be passed to M2L:
-        //     nodes_targets = af::join(1, nodes_targets_x, nodes_targets_y);
-        //     nodes_sources = af::join(1, nodes_sources_x, nodes_sources_y);
+            nodes_targets_x = af::flat(af::tile(nodes_targets_x, 1, rank, rank));
+            nodes_sources_x = af::flat(af::tile(nodes_sources_x, 1, rank, rank));
 
-        //     // Standard Locations of the coordinates:
-        //     array standard_targets_x, standard_targets_y, standard_sources_x, standard_sources_y;
-        //     scalePoints(c_x_targets, r_x_targets, target_coords(af::span, 0), 0, 1, standard_targets_x);
-        //     scalePoints(c_y_targets, r_y_targets, target_coords(af::span, 1), 0, 1, standard_targets_y);
-        //     scalePoints(c_x_sources, r_x_sources, source_coords(af::span, 0), 0, 1, standard_sources_x);
-        //     scalePoints(c_y_sources, r_y_sources, source_coords(af::span, 1), 0, 1, standard_sources_y);
+            nodes_targets_y = af::flat(af::tile(nodes_targets_y.T(), rank, 1, rank));
+            nodes_sources_y = af::flat(af::tile(nodes_sources_y.T(), rank, 1, rank));
 
-        //     array U_x = getL2L(standard_targets_x, standard_nodes);
-        //     array U_y = getL2L(standard_targets_y, standard_nodes);
+            nodes_targets_z = af::flat(af::tile(af::moddims(nodes_targets_z, 1, 1, rank), rank, rank, 1));
+            nodes_sources_z = af::flat(af::tile(af::moddims(nodes_sources_z, 1, 1, rank), rank, rank, 1));
+
+            // Joining along axis-1 so that the function can be passed to M2L:
+            nodes_targets = af::join(1, nodes_targets_x, nodes_targets_y, nodes_targets_z);
+            nodes_sources = af::join(1, nodes_sources_x, nodes_sources_y, nodes_sources_z);
+
+            // Standard Locations of the coordinates:
+            array standard_targets_x, standard_targets_y, standard_targets_z;
+            array standard_sources_x, standard_sources_y, standard_sources_z;
+
+            scalePoints(c_x_targets, r_x_targets, target_coords(af::span, 0), 0, 1, standard_targets_x);
+            scalePoints(c_y_targets, r_y_targets, target_coords(af::span, 1), 0, 1, standard_targets_y);
+            scalePoints(c_z_targets, r_z_targets, target_coords(af::span, 2), 0, 1, standard_targets_z);
+            
+            scalePoints(c_x_sources, r_x_sources, source_coords(af::span, 0), 0, 1, standard_sources_x);
+            scalePoints(c_y_sources, r_y_sources, source_coords(af::span, 1), 0, 1, standard_sources_y);
+            scalePoints(c_z_sources, r_z_sources, source_coords(af::span, 2), 0, 1, standard_sources_z);
+
+            array U_x = getL2L(standard_targets_x, standard_nodes);
+            array U_y = getL2L(standard_targets_y, standard_nodes);
+            array U_z = getL2L(standard_targets_z, standard_nodes);
          
-        //     U = af::constant(0, standard_targets_x.dims(0), rank * rank, f64);
-        //     for(int i = 0; i < standard_targets_x.dims(0); i++)
-        //     {
-        //         for(int j = 0; j < rank * rank; j++)
-        //         {
-        //             U(i, j) = U_x(i, j % rank) * U_x(i, j / rank);
-        //         }
-        //     }       
+            U = af::constant(0, standard_targets_x.dims(0), rank * rank * rank, f64);
+            for(int i = 0; i < standard_targets_x.dims(0); i++)
+            {
+                for(int j = 0; j < rank * rank * rank; j++)
+                {
+                    U(i, j) = U_x(i, j % rank) * U_y(i, (j / rank) % rank) * U_z(i, j / (rank * rank));
+                }
+            }       
 
-        //     S = getM2L(nodes_targets, nodes_sources, M);
+            S = getM2L(nodes_targets, nodes_sources, M);
 
-        //     array V_x = getL2L(standard_sources_x, standard_nodes);
-        //     array V_y = getL2L(standard_sources_y, standard_nodes);
+            array V_x = getL2L(standard_sources_x, standard_nodes);
+            array V_y = getL2L(standard_sources_y, standard_nodes);
+            array V_z = getL2L(standard_sources_z, standard_nodes);
 
-        //     V = af::constant(0, standard_sources_x.dims(0), rank * rank, f64);
-        //     for(int i = 0; i < standard_sources_x.dims(0); i++)
-        //     {
-        //         for(int j = 0; j < rank * rank; j++)
-        //         {
-        //             V(i, j) = V_x(i, j % rank) * V_y(i, j / rank);
-        //         }
-        //     }
+            V = af::constant(0, standard_sources_x.dims(0), rank * rank * rank, f64);
+            for(int i = 0; i < standard_sources_x.dims(0); i++)
+            {
+                for(int j = 0; j < rank * rank * rank; j++)
+                {
+                    V(i, j) = V_x(i, j % rank) * V_y(i, (j / rank) % rank) * V_z(i, j / (rank * rank));
+                }
+            }
 
-        //     // Taking transpose of V:
-        //     V = V.T();
-        // }
+            // Taking transpose of V:
+            V = V.T();
+            cout << "DONE!" << endl;
+        }
 
         else
         {
