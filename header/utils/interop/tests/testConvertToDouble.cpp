@@ -1,6 +1,5 @@
 // In this file, we test that the function converts to an array of double
 // given an ArrayFire array or an Eigen Matrix.
-// NOTE: This function also retains the 2D ordering:
 
 #include "../convertToDouble.hpp"
 #include "../../printElementsOfArray.hpp"
@@ -13,24 +12,42 @@ int main()
 
     Eigen::MatrixXd a(n_rows, n_cols);
     a.setRandom();
+    std::cout << "Printing Matrix stored under Eigen::MatrixXd:" << std::endl;
     std::cout << a << std::endl << std::endl;
 
-    double **b;
-    convertToDouble(a, b);
+    // Converting to 2D double array:
+    double **a_double_2d;
+    convertToDouble(a, a_double_2d);
     // Printing the array:
     std::cout << std::endl;
-    printElementsOfArray(b, n_rows, n_cols);
+    printElementsOfArray(a_double_2d, n_rows, n_cols);
+    std::cout << std::endl;
+
+    // Converting to 1D double array:
+    double *a_double_1d;
+    convertToDouble(a, a_double_1d);
+    // Printing the array:
+    std::cout << std::endl;
+    printElementsOfArray(a_double_1d, n_rows * n_cols);
     std::cout << std::endl;
 
     // Now testing with arrayfire:
-    af::array c = af::randu(n_rows, n_cols, f64);
-    af_print(c);    
+    af::array a_af = af::randu(n_rows, n_cols, f64);
+    std::cout << "Printing Matrix stored under af::Array:" << std::endl;
+    af_print(a_af);    
 
-    double **d;
-    convertToDouble(c, d);
+    // Converting to 2D double array:
+    convertToDouble(a_af, a_double_2d);
     // Printing the array:
     std::cout << std::endl;
-    printElementsOfArray(d, n_rows, n_cols);
+    printElementsOfArray(a_double_2d, n_rows, n_cols);
+    std::cout << std::endl;
+
+    // Converting to 1D double array:
+    convertToDouble(a_af, a_double_1d);
+    // Printing the array:
+    std::cout << std::endl;
+    printElementsOfArray(a_double_1d, n_rows * n_cols);
     std::cout << std::endl;
 
     return 0;

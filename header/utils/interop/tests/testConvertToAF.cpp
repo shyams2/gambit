@@ -6,7 +6,7 @@
 
 int main()
 {
-    // First testing with double:
+    // First testing with a 2D double:
     double a[6][5] = {{ 1,  2,  3,  4,  5}, 
                       { 6,  7,  8,  9, 10},
                       {11, 12, 13, 14, 15},
@@ -15,14 +15,25 @@ int main()
                       {26, 27, 28, 29, 30},
                      };
 
-    af_print(convertToAF(a));
+    af::array a_af;
+    convertToAF(a, a_af); 
+    af_print(a_af);
+
+    // Testing with single dimensional array:
+    double b[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+    af::array b_af;
+    convertToAF(b, 3, 2, b_af); 
+    af_print(b_af);
 
     // Now with Eigen:
-    Eigen::MatrixXd b(6 , 5);
-    b.setRandom();
+    Eigen::MatrixXd c(6 , 5);
+    c.setRandom();
+    af::array c_af;
 
-    std::cout << b << std::endl;
+    std::cout << "Original Matrix Stored in Eigen::MatrixXd:" << std::endl;
+    std::cout << c << std::endl << std::endl;
+    convertToAF(c, c_af);
     std::cout << "After converting to AF:" << std::endl;
-    af_print(convertToAF(b));
+    af_print(c_af);
     return 0;
 }
