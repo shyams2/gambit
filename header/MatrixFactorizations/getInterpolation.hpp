@@ -3,6 +3,7 @@
 
 #include <cstdlib>
 #include "MatrixData.hpp"
+#include "utils/determineCenterAndRadius.hpp"
 
 // Returns the roots on the N-th Legendre polynomial
 // These values are in the standard interval of [-1, 1]
@@ -145,13 +146,11 @@ namespace MatrixFactorizer
 
         if(M.getDimensionality() == 1)
         {
+            double c_targets, r_targets, c_sources, r_sources;
             // Determining the center and radius of targets:
-            double c_targets = 0.5 * (af::max<double>(target_coords) + af::min<double>(target_coords));
-            double r_targets = 0.5 * (af::max<double>(target_coords) - af::min<double>(target_coords));
-
+            determineCenterAndRadius(target_coords, c_targets, r_targets);
             // Determining the center and radius of sources:
-            double c_sources = 0.5 * (af::max<double>(source_coords) + af::min<double>(source_coords));
-            double r_sources = 0.5 * (af::max<double>(source_coords) - af::min<double>(source_coords));
+            determineCenterAndRadius(source_coords, c_sources, r_sources);
 
             // Obtain the scaled Chebyshev nodes for the targets:
             array nodes_targets, nodes_sources;
@@ -170,38 +169,22 @@ namespace MatrixFactorizer
 
         else if(M.getDimensionality() == 2)
         {
-            // Determining the center and radius of targets:
-            double c_x_targets = 0.5 * (  af::max<double>(target_coords(af::span, 0)) 
-                                        + af::min<double>(target_coords(af::span, 0))
-                                       );
-            double r_x_targets = 0.5 * (  af::max<double>(target_coords(af::span, 0)) 
-                                        - af::min<double>(target_coords(af::span, 0))
-                                       );
+            double c_x_targets, r_x_targets, c_x_sources, r_x_sources,
+                   c_y_targets, r_y_targets, c_y_sources, r_y_sources;
 
-            double c_y_targets = 0.5 * (  af::max<double>(target_coords(af::span, 1)) 
-                                        + af::min<double>(target_coords(af::span, 1))
-                                       );
-            double r_y_targets = 0.5 * (  af::max<double>(target_coords(af::span, 1)) 
-                                        - af::min<double>(target_coords(af::span, 1))
-                                       );
+            // Determining the centers and radii of targets:
+            determineCenterAndRadius(target_coords(af::span, 0), c_x_targets, r_x_targets);
+            determineCenterAndRadius(target_coords(af::span, 1), c_y_targets, r_y_targets);
 
-            // Determining the center and radius of sources:
-            double c_x_sources = 0.5 * (  af::max<double>(source_coords(af::span, 0)) 
-                                        + af::min<double>(source_coords(af::span, 0))
-                                       );
-            double r_x_sources = 0.5 * (  af::max<double>(source_coords(af::span, 0)) 
-                                        - af::min<double>(source_coords(af::span, 0))
-                                       );
-
-            double c_y_sources = 0.5 * (  af::max<double>(source_coords(af::span, 1)) 
-                                        + af::min<double>(source_coords(af::span, 1))
-                                       );
-            double r_y_sources = 0.5 * (  af::max<double>(source_coords(af::span, 1)) 
-                                        - af::min<double>(source_coords(af::span, 1))
-                                       );
+            // Determining the centers and radii of sources:
+            determineCenterAndRadius(source_coords(af::span, 0), c_x_sources, r_x_sources);
+            determineCenterAndRadius(source_coords(af::span, 1), c_y_sources, r_y_sources);
 
             // Obtain the scaled Chebyshev nodes for the targets:
-            array nodes_targets, nodes_sources, nodes_targets_x, nodes_targets_y, nodes_sources_x, nodes_sources_y;
+            array nodes_targets,   nodes_sources, 
+                  nodes_targets_x, nodes_sources_x, 
+                  nodes_targets_y, nodes_sources_y;
+
             scalePoints(0, 1, standard_nodes, c_x_targets, r_x_targets, nodes_targets_x);
             scalePoints(0, 1, standard_nodes, c_y_targets, r_y_targets, nodes_targets_y);
             scalePoints(0, 1, standard_nodes, c_x_sources, r_x_sources, nodes_sources_x);
@@ -255,50 +238,19 @@ namespace MatrixFactorizer
 
         else if(M.getDimensionality() == 3)
         {
-            // Determining the center and radius of targets:
-            double c_x_targets = 0.5 * (  af::max<double>(target_coords(af::span, 0)) 
-                                        + af::min<double>(target_coords(af::span, 0))
-                                       );
-            double r_x_targets = 0.5 * (  af::max<double>(target_coords(af::span, 0)) 
-                                        - af::min<double>(target_coords(af::span, 0))
-                                       );
+            double c_x_targets, r_x_targets, c_x_sources, r_x_sources,
+                   c_y_targets, r_y_targets, c_y_sources, r_y_sources,
+                   c_z_targets, r_z_targets, c_z_sources, r_z_sources;
 
-            double c_y_targets = 0.5 * (  af::max<double>(target_coords(af::span, 1)) 
-                                        + af::min<double>(target_coords(af::span, 1))
-                                       );
-            double r_y_targets = 0.5 * (  af::max<double>(target_coords(af::span, 1)) 
-                                        - af::min<double>(target_coords(af::span, 1))
-                                       );
+            // Determining the centers and radii of targets:
+            determineCenterAndRadius(target_coords(af::span, 0), c_x_targets, r_x_targets);
+            determineCenterAndRadius(target_coords(af::span, 1), c_y_targets, r_y_targets);
+            determineCenterAndRadius(target_coords(af::span, 2), c_z_targets, r_z_targets);
 
-            double c_z_targets = 0.5 * (  af::max<double>(target_coords(af::span, 2)) 
-                                        + af::min<double>(target_coords(af::span, 2))
-                                       );
-            double r_z_targets = 0.5 * (  af::max<double>(target_coords(af::span, 2)) 
-                                        - af::min<double>(target_coords(af::span, 2))
-                                       );
-
-            // Determining the center and radius of sources:
-            double c_x_sources = 0.5 * (  af::max<double>(source_coords(af::span, 0)) 
-                                        + af::min<double>(source_coords(af::span, 0))
-                                       );
-            double r_x_sources = 0.5 * (  af::max<double>(source_coords(af::span, 0)) 
-                                        - af::min<double>(source_coords(af::span, 0))
-                                       );
-
-            double c_y_sources = 0.5 * (  af::max<double>(source_coords(af::span, 1)) 
-                                        + af::min<double>(source_coords(af::span, 1))
-                                       );
-            double r_y_sources = 0.5 * (  af::max<double>(source_coords(af::span, 1)) 
-                                        - af::min<double>(source_coords(af::span, 1))
-                                       );
-
-            double c_z_sources = 0.5 * (  af::max<double>(source_coords(af::span, 1)) 
-                                        + af::min<double>(source_coords(af::span, 1))
-                                       );
-
-            double r_z_sources = 0.5 * (  af::max<double>(source_coords(af::span, 2)) 
-                                        - af::min<double>(source_coords(af::span, 2))
-                                       );
+            // Determining the centers and radii of sources:
+            determineCenterAndRadius(source_coords(af::span, 0), c_x_sources, r_x_sources);
+            determineCenterAndRadius(source_coords(af::span, 1), c_y_sources, r_y_sources);
+            determineCenterAndRadius(source_coords(af::span, 2), c_z_sources, r_z_sources);
 
             // Obtain the scaled Chebyshev nodes for the targets:
             array nodes_targets, nodes_sources;
@@ -376,6 +328,8 @@ namespace MatrixFactorizer
             cout << "Only dimension < 4 supported currently!" << endl;
             exit(1);
         }
+
+        U.eval(); S.eval(); V.eval();
     }
 }
 

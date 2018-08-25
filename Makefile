@@ -9,8 +9,8 @@ CC              = h5c++ $(COMPILER_OPTIONS)
 LIBS            = -lafcpu
 LIB_PATHS       = -L $(AF_PATH)/lib
 INCLUDES        = -I $(AF_PATH)/include -I $(EIGEN_PATH) -I $(HIGHFIVE_PATH)/include -I ./header
-SOURCES         = ./test/testInterpolation/testInterpolation3D.cpp
-EXECUTABLE      = ./exec/testInterpolation3D
+SOURCES         = ./test/testTree/testTree2D.cpp
+EXECUTABLE      = ./exec/testTree2D
 
 all:
 	$(CC) $(SOURCES) -o $(EXECUTABLE) $(INCLUDES) $(LIBS) $(LIB_PATHS)
