@@ -68,12 +68,15 @@ public:
     int parent;       // box number of the parent
     int children[4];  // box numbers of the children
     int neighbor[8];  // box numbers of the neighbors
+    // Members used in a level restricted tree:
+    int neighbor_fine[12];
+    int sep_neighbor_fine[20];
+    int neighbor_coarse[12];
+    
     int inner[16];    // box numbers of the inner boxes
     int outer[24];    // box numbers of the outer boxes
 
-    array nodes;      // nodes at the leaf level. In case the kernel is neither homogeneous or log-homogeneous
-                      // we will proceed to find these for all the levels.
-    
+    array nodes;      // nodes at the leaf level
     array node_charges, node_potentials;
 
     // Constructor for the class

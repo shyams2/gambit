@@ -1,5 +1,4 @@
 #include <arrayfire.h>
-#include "utils/kroneckerProduct.hpp"
 using af::array;
 
 void computeRSquared2D(array &i, array &j, array &targets, array &sources, array &r_squared)
@@ -157,33 +156,75 @@ array gaussianKernel(array &i, array &j, array &targets, array &sources)
 // Below, we've taken μ = 1:
 array stokesSingleLayer(array &i, array &j, array &targets, array &sources)
 {   
-    array r_squared, r, interaction;
+    array r, r_kron_r, interaction;
 
-    else if(target.dims(1) == 2)
+    if(target.dims(1) == 2)
     {
-        computeRSquared2D(i, j, targets, sources, r_squared);
-        r           = af::sqrt(r);
-        n_rows      = r.dims(0);
-        n_cols      = r.dims(1);
+        r_kron_r = array(targets.dims(0), sources.dims(0), 4, f64);
+        
+        array x_targets = targets(af::span, 0);
+        array x_sources = sources(af::span, 0);
+
+        array y_targets = targets(af::span, 1);
+        array y_sources = sources(af::span, 1);
+
+        array x_diff = x_targets(i) - (x_sources.T())(j);
+        array y_diff = y_targets(i) - (y_sources.T())(j);
+
+        r_kron_r(af::span, af::span, 0) = x_diff * x_diff;
+        r_kron_r(af::span, af::span, 1) = x_diff * y_diff;
+        r_kron_r(af::span, af::span, 2) = y_diff * x_diff;
+        r_kron_r(af::span, af::span, 3) = y_diff * y_diff;
+
+        // Important thing to note here: this is ||r||^2
+        r_squared = x_diff * x_diff + y_diff * y_diff;
+
         interaction = (-1 / (4 * af::Pi)) * 
-                      (  0.5 * af::log(r_squared) * af::identity(r_squared.dims(0), r_squared.dims(1))
-                       - kroneckerProduct(r, r) / r_squared
+                      (  0.5 * af::log(r_squared) * af::identity(r_squared.dims(0), r_squared.dims(1), f64)
+                       - r_kron_r / r_squared
                       )
 
-        interaction = af::select(af::isnan(interaction), 0, interaction); 
+        // Only choosing those elements which are not infty / NaNs:
+        interaction = af::select(af::isNaN(interaction) || af::isInf(interaction), 0, interaction); 
     }
 
     else // assuming dim = 3
     {
-        r           = af::sqrt(r);
-        n_rows      = r.dims(0);
-        n_cols      = r.dims(1);
+        r_kron_r = array(targets.dims(0), sources.dims(0), 9, f64);
+        
+        array x_targets = targets(af::span, 0);
+        array x_sources = sources(af::span, 0);
+
+        array y_targets = targets(af::span, 1);
+        array y_sources = sources(af::span, 1);
+
+        array z_targets = targets(af::span, 2);
+        array z_sources = sources(af::span, 2);
+
+        array x_diff = x_targets(i) - (x_sources.T())(j);
+        array y_diff = y_targets(i) - (y_sources.T())(j);
+        array z_diff = z_targets(i) - (z_sources.T())(j);
+    
+        r_kron_r(af::span, af::span, 0) = x_diff * x_diff;
+        r_kron_r(af::span, af::span, 1) = x_diff * y_diff;
+        r_kron_r(af::span, af::span, 2) = x_diff * z_diff;
+        r_kron_r(af::span, af::span, 3) = y_diff * x_diff;
+        r_kron_r(af::span, af::span, 4) = y_diff * y_diff;
+        r_kron_r(af::span, af::span, 5) = y_diff * z_diff;
+        r_kron_r(af::span, af::span, 6) = z_diff * x_diff;
+        r_kron_r(af::span, af::span, 7) = z_diff * y_diff;
+        r_kron_r(af::span, af::span, 8) = z_diff * z_diff;
+
+        // ||r|| = sqrt((x_i - x_j)^2 + (y_i - y_j)^2 + (z_i - z_j)^2);
+        r = af::sqrt(x_diff * x_diff + y_diff * y_diff + z_diff * z_diff);
+
         interaction = (1 / (8 * af::Pi)) * 
-                      (  af::identity(r_squared.dims(0), r_squared.dims(1)) / r
-                       - kroneckerProduct(r, r) / (r_squared * r)
+                      (  af::identity(r.dims(0), r.dims(1), f64) / r
+                       - r_kron_r / (af::pow(r, 3))
                       )
 
-        interaction = af::select(af::isnan(interaction), 0, interaction); 
+        // Only choosing those elements which are not infty / NaNs:
+        interaction = af::select(af::isNan(interaction) || af::isInf(interaction), 0, interaction); 
    }
 
     interaction.eval();
