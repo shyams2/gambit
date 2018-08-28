@@ -16,7 +16,7 @@ class Box(object):
               )
 
     def number(self, x_coords, y_coords):
-        return(len(self.contains(x_coords, y_coords)))
+        return(np.sum(self.contains(x_coords, y_coords)))
 
     def subdivide(self):
         B1 = Box(self.x_left_bot, self.y_left_bot, self.w / 2, self.h / 2);
@@ -33,18 +33,23 @@ def plot_graph(list_of_boxes):
     for B in list_of_boxes:
         ax.add_patch(patches.Rectangle((B.x_left_bot, B.y_left_bot), B.w, B.h, fill = False))
 
-    pl.savefig('plot.png', bbox_inches = 'tight')
-
-x_coords = np.random.rand(100)
-y_coords = np.random.rand(100)
+N        = 4000
+x_coords = np.random.rand(N)
+y_coords = np.random.rand(N)
 B_master = Box(0, 0, 1, 1)
 
-list_of_boxes  = [B_master]
-list_of_boxes += B_master.subdivide()
-list_of_boxes += list_of_boxes[1].subdivide()
-list_of_boxes += list_of_boxes[4].subdivide()
-list_of_boxes += list_of_boxes[-1].subdivide()
-list_of_boxes += list_of_boxes[-1].subdivide()
-list_of_boxes += list_of_boxes[10].subdivide()
-list_of_boxes += list_of_boxes[-1].subdivide()
+n_crit = 4
+
+list_of_boxes = [B_master]
+i             = 0 # counter
+while(1):
+    try:
+        if(list_of_boxes[i].number(x_coords, y_coords) > n_crit):
+            list_of_boxes += list_of_boxes[i].subdivide()
+        i += 1
+    except:
+        break
+
 plot_graph(list_of_boxes)
+pl.plot(x_coords, y_coords, 'ro')
+pl.savefig('plot.png', bbox_inches = 'tight')
