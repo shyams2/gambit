@@ -6,11 +6,11 @@ CC              = h5c++ $(COMPILER_OPTIONS)
 # -lafcuda   - For CUDA backend
 # -lafopencl - For OpenCL backend
 # -laf       - For unified backend
-LIBS            = -lafcpu
+LIBS            = -laf
 LIB_PATHS       = -L $(AF_PATH)/lib
 INCLUDES        = -I $(AF_PATH)/include -I $(EIGEN_PATH) -I $(HIGHFIVE_PATH)/include -I ./header
-SOURCES         = ./test/testTree/testTree2D.cpp
-EXECUTABLE      = ./exec/testTree2D
+SOURCES         = ./test/testInterpolation/testInterpolation3D.cpp
+EXECUTABLE      = ./exec/testInterpolation3D
 
 all:
 	$(CC) $(SOURCES) -o $(EXECUTABLE) $(INCLUDES) $(LIBS) $(LIB_PATHS)

@@ -53,18 +53,18 @@ int main(int argc, char** argv)
     cout << "Using Chebyshev Nodes" << endl;
     MatrixFactorizer::getInterpolation(U, S, V, rank, "CHEBYSHEV", M);
     // Finding Z_approx:
-    array Z_approx = af::matmul(U, S, V);
+    array Z_approx = af::matmul(U, S, V.T());
     printAllErrorNorms(Z_approx, M.getArray());
 
     cout << "Using Legendre Nodes" << endl;
     MatrixFactorizer::getInterpolation(U, S, V, rank, "LEGENDRE", M);
     // Finding Z_approx:
-    Z_approx = af::matmul(U, S, V);
+    Z_approx = af::matmul(U, S, V.T());
     printAllErrorNorms(Z_approx, M.getArray());
 
     cout << "Using Equispaced Nodes" << endl;
     MatrixFactorizer::getInterpolation(U, S, V, rank, "EQUISPACED", M);
     // Finding Z_approx:
-    Z_approx = af::matmul(U, S, V);
+    Z_approx = af::matmul(U, S, V.T());
     printAllErrorNorms(Z_approx, M.getArray());
 }

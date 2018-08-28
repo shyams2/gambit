@@ -7,13 +7,14 @@
 
 // Returns the roots on the N-th Legendre polynomial
 // These values are in the standard interval of [-1, 1]
-array getLegendreNodes(int N)
+void getLegendreNodes(const int N, array &nodes)
 {
     // Holds the coefficients of the polynomial:
     array poly = af::join(0, af::constant(0, N, f64), af::constant(1, 1, f64));
 
     // Getting the scaled companion matrix:
-    // This has been obtained following https://docs.scipy.org/doc/numpy-1.12.0/reference/generated/numpy.polynomial.legendre.legcompanion.html
+    // This has been obtained following 
+    // https://docs.scipy.org/doc/numpy-1.12.0/reference/generated/numpy.polynomial.legendre.legcompanion.html
     array companion = af::constant(0, N, N, f64);
     array scale     = 1 / af::sqrt(2 * af::range(N).as(f64) + 1);
 
@@ -23,7 +24,6 @@ array getLegendreNodes(int N)
                                           * scale(af::seq(1, N-1));
 
     companion(af::seq(N, af::end, N+1)) = companion(af::seq(1, af::end, N+1));
-
     // Getting the eigen values of the companion matrix to get roots
     // Using SVD since ArrayFire doesn't give Eigenvalues:
     // Since the matrix is symmetric, we can use the singular values 
@@ -32,40 +32,41 @@ array getLegendreNodes(int N)
     af::svd(U, S, U, companion); // U isn't needed anyways
 
     // Taking the negatives of the singular values and appending:
-    return af::join(0, -1 * S(af::seq(0, af::end, 2)), S(af::seq(af::end-1, 0, -2)));
+    nodes = af::join(0, -1 * S(af::seq(0, af::end, 2)), S(af::seq(af::end-1, 0, -2)));
+    nodes.eval();
 }
 
 // Returns the roots on the N-th Chebyshev polynomial of the first kind
 // These values are in the standard interval of [-1, 1]
-array getChebyshevNodes(int N)
+void getChebyshevNodes(const int N, array &nodes)
 {
-    return -af::cos(af::Pi * (2 * af::range(N).as(f64) + 1) / (2 * N));
+    nodes = -af::cos(af::Pi * (2 * af::range(N).as(f64) + 1) / (2 * N));
+    nodes.eval();
 }
 
 // Returns the equispaced nodes in the standard interval of [-1, 1]
-array getEquispacedNodes(int N)
+void getEquispacedNodes(const int N, array &nodes)
 {
-    return (-1 + (0.5 + af::range(N).as(f64)) * 2 / double(N));
+    nodes = -1 + (0.5 + af::range(N).as(f64)) * 2 / double(N); 
+    nodes.eval();
 }
-
 
 // Maps the points from a domain having center c1 and radius r1
 // To a domain having center c2 and radius r2
 // Basically mapping from [c1 - r1 / 2, c1 + r1 / 2] --> [c2 - r2 / 2, c2 + r2 / 2]
-void scalePoints(double c1, double r1, array x1, double c2, double r2, array& x2)
+void scalePoints(const double c1, const double r1, const array &x1,
+                 const double c2, const double r2, array& x2)
 {   
     x2 = c2 + r2 * (x1 - c1) /r1;
+    x2.eval();
 }
 
-// Returns the interpolation operator / L2L
-array getL2L(array x, array x_nodes)
+// Gives the interpolation operator / L2L for 1D:
+void getL2L1D(array x, array x_nodes, array &L2L)
 {
     // Size is the number of points in x
     // Rank is the number of points in x_nodes
-    int size = x.elements();
-    int rank = x_nodes.elements();
-
-    array L2L = af::constant(0, size, rank, f64);
+    unsigned rank = x_nodes.elements();
 
     // Tiling x       to bring it to shape (size, rank)
     // Tiling x_nodes to bring it to shape (rank, rank)
@@ -100,38 +101,85 @@ array getL2L(array x, array x_nodes)
     L2L = L2L / x_nodes.T();
     af::gforSet(false);
 
-    return L2L;
+    L2L.eval();
 }
 
-array getM2L(array nodes_1, array nodes_2, MatrixData M)
+// Gives the interpolation operator / L2L for 2D:
+void getL2L2D(array &x, array &y, array &nodes, array &L2L)
+{
+    unsigned rank = nodes.elements();
+
+    // Initializing:
+    array L2L_x(x.elements(), rank, f64);
+    array L2L_y(y.elements(), rank, f64);
+    
+    getL2L1D(x, nodes, L2L_x);
+    getL2L1D(y, nodes, L2L_y);
+
+    // Using a gfor loop for batched operations:
+    gfor(af::seq i, x.dims(0))
+    {
+        for(unsigned j = 0; j < rank * rank; j++)
+        {
+            L2L(i, j) = L2L_x(i, j % rank) * L2L_y(i, j / rank);
+        }
+    }
+}
+
+// Gives the interpolation operator / L2L for 3D:
+void getL2L3D(array &x, array &y, array &z, array &nodes, array &L2L)
+{
+    unsigned rank = nodes.elements();
+
+    // Initializing:
+    array L2L_x(x.elements(), rank, f64);
+    array L2L_y(y.elements(), rank, f64);
+    array L2L_z(z.elements(), rank, f64);
+
+    getL2L1D(x, nodes, L2L_x);
+    getL2L1D(y, nodes, L2L_y);
+    getL2L1D(z, nodes, L2L_z);
+
+    // Using a gfor loop for batched operations:
+    gfor(af::seq i, x.dims(0))
+    {
+        for(unsigned j = 0; j < rank * rank * rank; j++)
+        {
+            L2L(i, j) = L2L_x(i, j % rank) * L2L_y(i, (j / rank) % rank) * L2L_z(i, j / (rank * rank));
+        }
+    }       
+}
+
+void getM2L(const array &nodes_1, const array &nodes_2, MatrixData &M, array &M2L)
 {
     // Evaluating the Kernel function at the Chebyshev nodes:
-    return M.buildArray(int(nodes_1.dims(0)), int(nodes_2.dims(0)),
-                        nodes_1, nodes_2
-                       );
+    M2L = M.buildArray(int(nodes_1.dims(0)), int(nodes_2.dims(0)),
+                       nodes_1, nodes_2
+                      );
+    M2L.eval();
 }
 
 namespace MatrixFactorizer
 {
-    void getInterpolation(array& U, array& S, array& V, int rank, string interpolation_type, MatrixData M) 
+    void getInterpolation(array &U, array &S, array &V, int n_nodes, string interpolation_type, MatrixData &M) 
     {
         array standard_nodes;
         // Obtaining the standard Chebyshev nodes of the first kind:
         if(interpolation_type == "CHEBYSHEV")
         {
-            standard_nodes = getChebyshevNodes(rank);
+            getChebyshevNodes(n_nodes, standard_nodes);
         }
 
         // Obtaining the standard Legendre nodes:
         else if(interpolation_type == "LEGENDRE")
         {
-            standard_nodes = getLegendreNodes(rank);
+            getLegendreNodes(n_nodes, standard_nodes);
         }
 
         // Obtaining the standard equispaced nodes:
         else if(interpolation_type == "EQUISPACED")
         {
-            standard_nodes = getEquispacedNodes(rank);
+            getEquispacedNodes(n_nodes, standard_nodes);
         }
 
         else
@@ -154,6 +202,7 @@ namespace MatrixFactorizer
 
             // Obtain the scaled Chebyshev nodes for the targets:
             array nodes_targets, nodes_sources;
+
             scalePoints(0, 1, standard_nodes, c_targets, r_targets, nodes_targets);
             scalePoints(0, 1, standard_nodes, c_sources, r_sources, nodes_sources);
 
@@ -162,9 +211,14 @@ namespace MatrixFactorizer
             scalePoints(c_targets, r_targets, target_coords, 0, 1, standard_targets);
             scalePoints(c_sources, r_sources, source_coords, 0, 1, standard_sources);
         
-            U = getL2L(standard_targets, standard_nodes);
-            S = getM2L(nodes_targets, nodes_sources, M);
-            V = getL2L(standard_sources, standard_nodes).T();
+            // Initializing U, S, V:
+            U = af::constant(0, M.getNumRows(), n_nodes, f64);
+            S = array(n_nodes, n_nodes, f64);
+            V = af::constant(0, M.getNumColumns(), n_nodes, f64);
+
+            getL2L1D(standard_targets, standard_nodes, U);
+            getM2L(nodes_targets, nodes_sources, M, S);
+            getL2L1D(standard_sources, standard_nodes, V);
         }
 
         else if(M.getDimensionality() == 2)
@@ -190,10 +244,10 @@ namespace MatrixFactorizer
             scalePoints(0, 1, standard_nodes, c_x_sources, r_x_sources, nodes_sources_x);
             scalePoints(0, 1, standard_nodes, c_y_sources, r_y_sources, nodes_sources_y);
 
-            nodes_targets_x = af::flat(af::tile(nodes_targets_x, 1, rank));
-            nodes_sources_x = af::flat(af::tile(nodes_sources_x, 1, rank));
-            nodes_targets_y = af::flat(af::tile(nodes_targets_y.T(), rank));
-            nodes_sources_y = af::flat(af::tile(nodes_sources_y.T(), rank));
+            nodes_targets_x = af::flat(af::tile(nodes_targets_x, 1, n_nodes));
+            nodes_sources_x = af::flat(af::tile(nodes_sources_x, 1, n_nodes));
+            nodes_targets_y = af::flat(af::tile(nodes_targets_y.T(), n_nodes));
+            nodes_sources_y = af::flat(af::tile(nodes_sources_y.T(), n_nodes));
 
             // Joining along axis-1 so that the function can be passed to M2L:
             nodes_targets = af::join(1, nodes_targets_x, nodes_targets_y);
@@ -206,34 +260,12 @@ namespace MatrixFactorizer
             scalePoints(c_x_sources, r_x_sources, source_coords(af::span, 0), 0, 1, standard_sources_x);
             scalePoints(c_y_sources, r_y_sources, source_coords(af::span, 1), 0, 1, standard_sources_y);
 
-            array U_x = getL2L(standard_targets_x, standard_nodes);
-            array U_y = getL2L(standard_targets_y, standard_nodes);
-            
-            U = af::constant(0, standard_targets_x.dims(0), rank * rank, f64);
-            for(int i = 0; i < standard_targets_x.dims(0); i++)
-            {
-                for(int j = 0; j < rank * rank; j++)
-                {
-                    U(i, j) = U_x(i, j % rank) * U_y(i, j / rank);
-                }
-            }
+            U = array(standard_targets_x.dims(0), n_nodes * n_nodes, f64);
+            V = array(standard_sources_x.dims(0), n_nodes * n_nodes, f64);
 
-            S = getM2L(nodes_targets, nodes_sources, M);
-
-            array V_x = getL2L(standard_sources_x, standard_nodes);
-            array V_y = getL2L(standard_sources_y, standard_nodes);
-
-            V = af::constant(0, standard_sources_x.dims(0), rank * rank, f64);
-            for(int i = 0; i < standard_sources_x.dims(0); i++)
-            {
-                for(int j = 0; j < rank * rank; j++)
-                {
-                    V(i, j) = V_x(i, j % rank) * V_y(i, j / rank);
-                }
-            }
-
-            // Taking transpose of V:
-            V = V.T();
+            getL2L2D(standard_targets_x, standard_targets_y, standard_nodes, U);
+            getM2L(nodes_targets, nodes_sources, M, S);
+            getL2L2D(standard_sources_x, standard_sources_y, standard_nodes, V);
         }
 
         else if(M.getDimensionality() == 3)
@@ -265,14 +297,14 @@ namespace MatrixFactorizer
             scalePoints(0, 1, standard_nodes, c_y_sources, r_y_sources, nodes_sources_y);
             scalePoints(0, 1, standard_nodes, c_z_sources, r_z_sources, nodes_sources_z);
 
-            nodes_targets_x = af::flat(af::tile(nodes_targets_x, 1, rank, rank));
-            nodes_sources_x = af::flat(af::tile(nodes_sources_x, 1, rank, rank));
+            nodes_targets_x = af::flat(af::tile(nodes_targets_x, 1, n_nodes, n_nodes));
+            nodes_sources_x = af::flat(af::tile(nodes_sources_x, 1, n_nodes, n_nodes));
 
-            nodes_targets_y = af::flat(af::tile(nodes_targets_y.T(), rank, 1, rank));
-            nodes_sources_y = af::flat(af::tile(nodes_sources_y.T(), rank, 1, rank));
+            nodes_targets_y = af::flat(af::tile(nodes_targets_y.T(), n_nodes, 1, n_nodes));
+            nodes_sources_y = af::flat(af::tile(nodes_sources_y.T(), n_nodes, 1, n_nodes));
 
-            nodes_targets_z = af::flat(af::tile(af::moddims(nodes_targets_z, 1, 1, rank), rank, rank, 1));
-            nodes_sources_z = af::flat(af::tile(af::moddims(nodes_sources_z, 1, 1, rank), rank, rank, 1));
+            nodes_targets_z = af::flat(af::tile(af::moddims(nodes_targets_z, 1, 1, n_nodes), n_nodes, n_nodes, 1));
+            nodes_sources_z = af::flat(af::tile(af::moddims(nodes_sources_z, 1, 1, n_nodes), n_nodes, n_nodes, 1));
 
             // Joining along axis-1 so that the function can be passed to M2L:
             nodes_targets = af::join(1, nodes_targets_x, nodes_targets_y, nodes_targets_z);
@@ -290,37 +322,12 @@ namespace MatrixFactorizer
             scalePoints(c_y_sources, r_y_sources, source_coords(af::span, 1), 0, 1, standard_sources_y);
             scalePoints(c_z_sources, r_z_sources, source_coords(af::span, 2), 0, 1, standard_sources_z);
 
-            array U_x = getL2L(standard_targets_x, standard_nodes);
-            array U_y = getL2L(standard_targets_y, standard_nodes);
-            array U_z = getL2L(standard_targets_z, standard_nodes);
-         
-            U = af::constant(0, standard_targets_x.dims(0), rank * rank * rank, f64);
-            for(int i = 0; i < standard_targets_x.dims(0); i++)
-            {
-                for(int j = 0; j < rank * rank * rank; j++)
-                {
-                    U(i, j) = U_x(i, j % rank) * U_y(i, (j / rank) % rank) * U_z(i, j / (rank * rank));
-                }
-            }       
+            U = array(standard_targets_x.dims(0), n_nodes * n_nodes * n_nodes, f64);
+            V = array(standard_sources_x.dims(0), n_nodes * n_nodes * n_nodes, f64);
 
-            S = getM2L(nodes_targets, nodes_sources, M);
-
-            array V_x = getL2L(standard_sources_x, standard_nodes);
-            array V_y = getL2L(standard_sources_y, standard_nodes);
-            array V_z = getL2L(standard_sources_z, standard_nodes);
-
-            V = af::constant(0, standard_sources_x.dims(0), rank * rank * rank, f64);
-            for(int i = 0; i < standard_sources_x.dims(0); i++)
-            {
-                for(int j = 0; j < rank * rank * rank; j++)
-                {
-                    V(i, j) = V_x(i, j % rank) * V_y(i, (j / rank) % rank) * V_z(i, j / (rank * rank));
-                }
-            }
-
-            // Taking transpose of V:
-            V = V.T();
-            cout << "DONE!" << endl;
+            getL2L3D(standard_targets_x, standard_targets_y, standard_targets_z, standard_nodes, U);
+            getM2L(nodes_targets, nodes_sources, M, S);
+            getL2L3D(standard_sources_x, standard_sources_y, standard_sources_z, standard_nodes, V);
         }
 
         else
