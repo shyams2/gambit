@@ -89,6 +89,7 @@ void getL2L1D(array x, array x_nodes, array &L2L)
     // temp is used to get num(P_i) = Π(x - x_j) where i =! j
     array temp;
 
+    // DO NOT USE GFOR HERE! THROWS WRONG RESULTS!
     for(int i = 0; i < x_nodes.dims(0); i++)
     {
         temp        = x;
@@ -117,12 +118,10 @@ void getL2L2D(array &x, array &y, array &nodes, array &L2L)
     getL2L1D(y, nodes, L2L_y);
 
     // Using a gfor loop for batched operations:
-    gfor(af::seq i, x.dims(0))
+    gfor(af::seq i, rank * rank)
     {
-        for(unsigned j = 0; j < rank * rank; j++)
-        {
-            L2L(i, j) = L2L_x(i, j % rank) * L2L_y(i, j / rank);
-        }
+        L2L(af::span, i) =  L2L_x(af::span, i % rank) 
+                          * L2L_y(af::span, i / rank);
     }
 }
 
@@ -141,13 +140,12 @@ void getL2L3D(array &x, array &y, array &z, array &nodes, array &L2L)
     getL2L1D(z, nodes, L2L_z);
 
     // Using a gfor loop for batched operations:
-    gfor(af::seq i, x.dims(0))
+    gfor(af::seq i, rank * rank * rank)
     {
-        for(unsigned j = 0; j < rank * rank * rank; j++)
-        {
-            L2L(i, j) = L2L_x(i, j % rank) * L2L_y(i, (j / rank) % rank) * L2L_z(i, j / (rank * rank));
-        }
-    }       
+        L2L(af::span, i) =  L2L_x(af::span, i % rank) 
+                          * L2L_y(af::span, (i / rank) % rank) 
+                          * L2L_z(af::span, i / (rank * rank));
+    }
 }
 
 void getM2L(const array &nodes_1, const array &nodes_2, MatrixData &M, array &M2L)
