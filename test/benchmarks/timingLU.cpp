@@ -11,7 +11,7 @@ int main()
     af::info();
     std::cout << std::endl;
 
-    const int N[] = {32, 64, 128, 256, 512, 1024, 2048, 4096, 9192};
+    const int N[] = {32, 64, 128, 256, 512, 1024, 2048, 4096, 8192};
     double timing_data[sizeof(N) / sizeof(N[0])];
     int i, j; // loop counters
     af::array L, U, P;
@@ -32,7 +32,7 @@ int main()
         // Performing over 10 runs and then taking average
         for(j = 0; j < 10; j++)
         {
-            af::qr(L, U, P, A);
+            af::lu(L, U, P, A);
             af::eval(L);
             af::eval(U);
             af::eval(P);
