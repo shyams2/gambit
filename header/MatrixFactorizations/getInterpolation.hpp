@@ -1,65 +1,10 @@
 #ifndef __getInterpolation_hpp__
 #define __getInterpolation_hpp__
 
-#include <cstdlib>
 #include "MatrixData.hpp"
 #include "utils/determineCenterAndRadius.hpp"
-
-// Returns the roots on the N-th Legendre polynomial
-// These values are in the standard interval of [-1, 1]
-void getLegendreNodes(const int N, array &nodes)
-{
-    // Holds the coefficients of the polynomial:
-    array poly = af::join(0, af::constant(0, N, f64), af::constant(1, 1, f64));
-
-    // Getting the scaled companion matrix:
-    // This has been obtained following 
-    // https://docs.scipy.org/doc/numpy-1.12.0/reference/generated/numpy.polynomial.legendre.legcompanion.html
-    array companion = af::constant(0, N, N, f64);
-    array scale     = 1 / af::sqrt(2 * af::range(N).as(f64) + 1);
-
-    // Assigning the values to the sub-diagonal and super-diagonal:
-    companion(af::seq(1, af::end, N+1)) =   af::range(N).as(f64)(af::seq(1, N-1))
-                                          * scale(af::seq(0, N-2)) 
-                                          * scale(af::seq(1, N-1));
-
-    companion(af::seq(N, af::end, N+1)) = companion(af::seq(1, af::end, N+1));
-    // Getting the eigen values of the companion matrix to get roots
-    // Using SVD since ArrayFire doesn't give Eigenvalues:
-    // Since the matrix is symmetric, we can use the singular values 
-    // as it's equivalent to the eigenvalues.
-    array U, S;
-    af::svd(U, S, U, companion); // U isn't needed anyways
-
-    // Taking the negatives of the singular values and appending:
-    nodes = af::join(0, -1 * S(af::seq(0, af::end, 2)), S(af::seq(af::end-1, 0, -2)));
-    nodes.eval();
-}
-
-// Returns the roots on the N-th Chebyshev polynomial of the first kind
-// These values are in the standard interval of [-1, 1]
-void getChebyshevNodes(const int N, array &nodes)
-{
-    nodes = -af::cos(af::Pi * (2 * af::range(N).as(f64) + 1) / (2 * N));
-    nodes.eval();
-}
-
-// Returns the equispaced nodes in the standard interval of [-1, 1]
-void getEquispacedNodes(const int N, array &nodes)
-{
-    nodes = -1 + (0.5 + af::range(N).as(f64)) * 2 / double(N); 
-    nodes.eval();
-}
-
-// Maps the points from a domain having center c1 and radius r1
-// To a domain having center c2 and radius r2
-// Basically mapping from [c1 - r1 / 2, c1 + r1 / 2] --> [c2 - r2 / 2, c2 + r2 / 2]
-void scalePoints(const double c1, const double r1, const array &x1,
-                 const double c2, const double r2, array& x2)
-{   
-    x2 = c2 + r2 * (x1 - c1) /r1;
-    x2.eval();
-}
+#include "utils/getStandardNodes.hpp"
+#include "utils/scalePoints.hpp"
 
 // Gives the interpolation operator / L2L for 1D:
 void getL2L1D(array x, array x_nodes, array &L2L)
@@ -123,6 +68,8 @@ void getL2L2D(array &x, array &y, array &nodes, array &L2L)
         L2L(af::span, i) =  L2L_x(af::span, i % rank) 
                           * L2L_y(af::span, i / rank);
     }
+
+    L2L.eval();
 }
 
 // Gives the interpolation operator / L2L for 3D:
@@ -146,6 +93,8 @@ void getL2L3D(array &x, array &y, array &z, array &nodes, array &L2L)
                           * L2L_y(af::span, (i / rank) % rank) 
                           * L2L_z(af::span, i / (rank * rank));
     }
+
+    L2L.eval();
 }
 
 void getM2L(const array &nodes_1, const array &nodes_2, MatrixData &M, array &M2L)
@@ -162,31 +111,8 @@ namespace MatrixFactorizer
     void getInterpolation(array &U, array &S, array &V, int n_nodes, string interpolation_type, MatrixData &M) 
     {
         array standard_nodes;
-        // Obtaining the standard Chebyshev nodes of the first kind:
-        if(interpolation_type == "CHEBYSHEV")
-        {
-            getChebyshevNodes(n_nodes, standard_nodes);
-        }
-
-        // Obtaining the standard Legendre nodes:
-        else if(interpolation_type == "LEGENDRE")
-        {
-            getLegendreNodes(n_nodes, standard_nodes);
-        }
-
-        // Obtaining the standard equispaced nodes:
-        else if(interpolation_type == "EQUISPACED")
-        {
-            getEquispacedNodes(n_nodes, standard_nodes);
-        }
-
-        else
-        {
-            cout << "Invalid choice for interpolation type" << endl;
-            cout << "Please use either CHEBYSHEV, LEGENDRE or EQUISPACED" << endl;
-            exit(1);
-        }
-
+        
+        getStandardNodes(n_nodes, interpolation_type, standard_nodes);
         array target_coords = M.getTargetCoordinates();
         array source_coords = M.getSourceCoordinates();
 

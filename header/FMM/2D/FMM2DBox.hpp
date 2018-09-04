@@ -5,40 +5,50 @@
 
 class FMM2DBox 
 {
-private:
+public:
     double c_x, c_y, r_x, r_y; // centers and radii for this box
-    bool is_root, is_leaf;    
+    bool is_root, is_leaf, is_empty, charge_computed;    
     array inds_in_box;
 
-    int box_number;
-    int parent_number;
-    int children_numbers[4];
-    int neighbor_numbers[8];
-    int inner_numbers[16];
-    int outer_numbers[24];
+    int N; // total number of points in this box
+    int N_box;
+    int N_parent;
+    int N_level;
+    int N_children[4];
+    int N_neighbor[8];
+    int N_interaction[27]; // indices for the interaction list
 
-public:
-    // Constructor for the class
+    // Constructors for the class
     FMM2DBox(MatrixData M);
-    // Alternate constructor:
     FMM2DBox(double c_x, double c_y, double r_x, double r_y,
              array inds_in_box, n_level
             );
+
     // Destructor for the class:
     ~FMM2DBox(){};
-
-    void createChildren();
-    void getRadius(double &r_x, double &r_y);
-    void getCenter(double &c_x, double &c_y);
 };
 
 // When declared with MatrixData it means root box:
 FMM2DBox::FMM2DBox(MatrixData M)
 {
-    this->box_number = 0;
-    this->n_level = 0;
+    this->N_box   = 0;
+    this->N_level = 0;
     this->is_root = true;
     this->is_leaf = false;
+    this->N       = M.getNumColumns();
+
+    # pragma omp for
+    for(unsigned i = 0; i < 27, i++)
+    {
+        this->N_interaction[i] = 0;
+    }
+
+    # pragma omp for
+    for(unsigned i = 0; i < 8, i++)
+    {
+        this->N_neighbor[i] = 0;
+    }
+
     // Determining the centers and radii of sources:
     determineCenterAndRadius(M.getSourceCoords(af::span, 0), this->c_x, this->r_x);
     determineCenterAndRadius(M.getSourceCoords(af::span, 1), this->c_y, this->r_y);
