@@ -40,11 +40,11 @@ private:
     // NOTE: Not necessarily allocated
     array A;
     // Number of rows and columns:
-    size_t n_rows, n_columns;
+    size_t n_rows, n_cols;
     // Dimensionality of the points considered:
     size_t n_dims;
     // The following get used when the kernel function is passed during instantiation:
-    std::function<array(array, array, array, array)> matrixEntriesAF;
+    std::function<array(array, array, array&, array&)> matrixEntriesAF;
     // When double* is used instead:
     std::function<double(unsigned, unsigned, double*, size_t, double*, size_t, size_t)> matrixEntriesDouble;
     // If the data is passed in AF form:
@@ -56,20 +56,20 @@ private:
 public:
 
     // When array itself is passed when calling:
-    MatrixData(array& input_array);
+    MatrixData(array &input_array);
 
-    // Builds a matrix with given rank:
+    // Builds a matrix with given numerical rank:
     // m    - number of rows
     // n    - number of colums
     // rank - rank of matrix
-    MatrixData(int m, int n, int rank);
+    MatrixData(size_t m, size_t n, size_t rank);
 
     // Builds a matrix with singular values ranging uniformly from singular_min to singular_max:
     // m            - number of rows
     // n            - number of colums
     // singular_min - Lowest singular value of matrix
     // singular_max - Maximum singular value of matrix
-    MatrixData(int m, int n, double singular_min, double singular_max);
+    MatrixData(size_t m, size_t n, double singular_min, double singular_max);
 
     // When the blueprint to create the matrix is provided: 
     // That is function to generate matrix is passed to contructor
@@ -78,8 +78,8 @@ public:
     // j       - index / indices to access from sources
     // targets - 1D array of targets locations;
     // sources - 1D array of source locations;
-    MatrixData(std::function<array(array, array, array, array)> matrixEntries,
-               array targets, array sources
+    MatrixData(std::function<array(array, array, array&, array&)> matrixEntries,
+               array &targets, array &sources
               );
 
     // Alternate form when the arguments to the function are double instead of af::array:
@@ -100,7 +100,7 @@ public:
     // The entry (i, j) in this matrix would give the interaction between the
     // i-th target and the j-th source
     array buildArray();
-    array buildArray(int n_rows, int n_columns, array targets, array sources);
+    array buildArray(size_t n_rows, size_t n_cols, array targets, array sources);
 
     // Estimates the rank of the matrix encoded using SVD
     int estimateRank(double tolerance);
@@ -116,14 +116,14 @@ public:
     array getArray();
 
     // Returns the entries of the requested rows:
-    array getRow(int i);
+    array getRow(unsigned i);
 
     // Returns the entries of the requested columns:
-    array getColumn(int i);
+    array getCol(unsigned i);
 
     // Returns the number of rows and columns:
     size_t getNumRows();
-    size_t getNumColumns();
+    size_t getNumCols();
     // Gets the dimensionality:
     size_t getDimensionality();
     // Returns the source and target coordinates:
@@ -137,15 +137,15 @@ public:
 
 MatrixData::MatrixData(array& input_array)
 {
-    this->n_rows    = input_array.dims(0);
-    this->n_columns = input_array.dims(1);
-    this->A         = input_array;
+    this->n_rows = input_array.dims(0);
+    this->n_cols = input_array.dims(1);
+    this->A      = input_array;
 }
 
-MatrixData::MatrixData(int m, int n, int rank)
+MatrixData::MatrixData(size_t m, size_t n, size_t rank)
 {
-    this->n_rows    = m;
-    this->n_columns = n;
+    this->n_rows = m;
+    this->n_cols = n;
 
     array Q1, Q2, R, T;
     double min_m_n = std::min(m, n);
@@ -166,10 +166,10 @@ MatrixData::MatrixData(int m, int n, int rank)
     this->A = af::matmul(U, S, V);
 }
 
-MatrixData::MatrixData(int m, int n, double singular_min, double singular_max)
+MatrixData::MatrixData(size_t m, size_t n, double singular_min, double singular_max)
 {
-    this->n_rows    = m;
-    this->n_columns = n;
+    this->n_rows = m;
+    this->n_cols = n;
 
     array Q1, Q2, R, T;
     double min_m_n = std::min(m, n);
@@ -189,13 +189,13 @@ MatrixData::MatrixData(int m, int n, double singular_min, double singular_max)
     this->A = af::matmul(U, S, V);
 }
 
-MatrixData::MatrixData(std::function<array(array, array, array, array)> matrixEntries,
-                       array targets, array sources
+MatrixData::MatrixData(std::function<array(array, array, array&, array&)> matrixEntries,
+                       array &targets, array &sources
                       )
 {
     this->matrixEntriesAF = matrixEntries;
     this->n_rows          = targets.dims(0);
-    this->n_columns       = sources.dims(0);
+    this->n_cols          = sources.dims(0);
 
     this->targets_af = targets;
     this->sources_af = sources;
@@ -208,6 +208,7 @@ MatrixData::MatrixData(std::function<array(array, array, array, array)> matrixEn
     }
 }
 
+// NOTE: Undeveloped Feature
 MatrixData::MatrixData(std::function<double(unsigned, unsigned, double*, size_t, double*, size_t, size_t)> matrixEntries,
                        double* targets, const size_t n_targets, double* sources, const size_t n_sources,
                        const size_t n_dims
@@ -215,7 +216,7 @@ MatrixData::MatrixData(std::function<double(unsigned, unsigned, double*, size_t,
 {
     this->matrixEntriesDouble = matrixEntries;
     this->n_rows              = n_targets;
-    this->n_columns           = n_sources;
+    this->n_cols              = n_sources;
 
     this->targets = targets;
     this->sources = sources;
@@ -229,7 +230,7 @@ array MatrixData::buildArray()
     // Allowing broadcasting:
     af::gforSet(true);
     array_to_return = this->matrixEntriesAF(af::range(this->n_rows),
-                                            af::range(this->n_columns),
+                                            af::range(this->n_cols),
                                             this->targets_af, this->sources_af
                                            );
     af::gforSet(false);
@@ -239,13 +240,13 @@ array MatrixData::buildArray()
 
 // Overloaded function when the new(interpolated) sources / target locations and 
 // directly provide to function used to build the kernel operator's entries:
-array MatrixData::buildArray(int n_rows, int n_columns, array targets, array sources)
+array MatrixData::buildArray(size_t n_rows, size_t n_cols, array targets, array sources)
 {
     array array_to_return;
     // Allowing broadcasting:
     af::gforSet(true);
     array_to_return = this->matrixEntriesAF(af::range(n_rows),
-                                            af::range(n_columns),
+                                            af::range(n_cols),
                                             targets, sources
                                            );
     af::gforSet(false);
@@ -254,12 +255,12 @@ array MatrixData::buildArray(int n_rows, int n_columns, array targets, array sou
 }
 
 // TODO: Look into faster methods instead of SVD:
-int MatrixData::estimateRank(double tolerance = 1e-16) 
+int MatrixData::estimateRank(double tolerance = 1e-12) 
 {
     // Temporary array that exists only in the scope of this function:
     array temp;
     
-    if(this->A.elements() == 0)
+    if((this->A).elements() == 0)
     {
         temp = MatrixData::buildArray();
     }
@@ -287,7 +288,7 @@ double MatrixData::getConditionNumber()
     // Temporary array that exists only in the scope of this function:
     array temp;
     
-    if(this->A.elements() == 0)
+    if((this->A).elements() == 0)
     {
         temp = MatrixData::buildArray();
     }
@@ -311,7 +312,7 @@ double MatrixData::estimateSpectralNorm(double tolerance = 1e-12)
     // Temporary array that exists only in the scope of this function:
     array temp;
     
-    if(this->A.elements() == 0)
+    if((this->A).elements() == 0)
     {
         temp = MatrixData::buildArray();
     }
@@ -362,7 +363,7 @@ array MatrixData::getArray()
     }
 }
 
-array MatrixData::getRow(int i)
+array MatrixData::getRow(unsigned i)
 {
     if((this->A).elements() == 0)
     {
@@ -370,7 +371,7 @@ array MatrixData::getRow(int i)
         // Allowing broadcasting:
         af::gforSet(true);
         array_to_return = this->matrixEntriesAF(af::constant(i, 1, u32),
-                                                af::range(this->n_columns),
+                                                af::range(this->n_cols),
                                                 this->targets_af, this->sources_af
                                                );
         af::gforSet(false);
@@ -380,11 +381,11 @@ array MatrixData::getRow(int i)
 
     else
     {
-        return this->A.row(i);
+        return (this->A).row(i);
     }
 }
 
-array MatrixData::getColumn(int i)
+array MatrixData::getCol(unsigned i)
 {
     if((this->A).elements() == 0)
     {
@@ -402,7 +403,7 @@ array MatrixData::getColumn(int i)
 
     else
     {
-        return this->A.col(i);
+        return (this->A).col(i);
     }
 }
 
@@ -411,9 +412,9 @@ size_t MatrixData::getNumRows()
     return this->n_rows;
 }
 
-size_t MatrixData::getNumColumns()
+size_t MatrixData::getNumCols()
 {
-    return this->n_columns;
+    return this->n_cols;
 }
 
 size_t MatrixData::getDimensionality()
@@ -436,7 +437,7 @@ void MatrixData::dumpArray(string file_name)
     // NOTE: Currently data is being dumped in 1D form, which will then need to be reshaped:
     HighFive::File file(file_name, HighFive::File::ReadWrite | HighFive::File::Create | HighFive::File::Truncate);
     std::vector<size_t> dims(1);
-    dims[0] = MatrixData::getNumRows() * MatrixData::getNumColumns();
+    dims[0] = MatrixData::getNumRows() * MatrixData::getNumCols();
 
     // Create the dataset
     HighFive::DataSet dataset = file.createDataSet<double>("array", HighFive::DataSpace(dims));
@@ -457,7 +458,7 @@ void MatrixData::loadArray(string file_name)
     HighFive::DataSet dataset = file.getDataSet("array");
     // We convert the hdf5 dataset to a single dimension vector
     dataset.read(temp);
-    this->A = array(this->getNumRows(), this->getNumColumns(), temp.data(), afHost);
+    this->A = array(this->getNumRows(), this->getNumCols(), temp.data(), afHost);
 }
 
 #endif

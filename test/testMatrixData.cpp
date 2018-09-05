@@ -2,7 +2,7 @@
 
 // When the cluster considered is in 1D
 // K(r) = 1 / (1 + r^2)
-array interaction_kernel_1d(array i, array j, array targets, array sources)
+array interaction_kernel_1d(array i, array j, array &targets, array &sources)
 {   
     array r = targets(i) - (sources.T())(j);
     return(1 / (1 + r * r));
@@ -10,7 +10,7 @@ array interaction_kernel_1d(array i, array j, array targets, array sources)
 
 // When the cluster considered is in 2D
 // K(r) = log(r)
-array interaction_kernel_2d(array i, array j, array targets, array sources)
+array interaction_kernel_2d(array i, array j, array &targets, array &sources)
 {   
     array x_targets = targets(af::span, 0);
     array x_sources = sources(af::span, 0);
@@ -48,7 +48,6 @@ int main(int argc, char** argv)
 
     cout << "Checking that the data is the same even after writing and loading" << endl;
     cout << "||A - M1->A|| = " << af::norm(A - M1.getArray()) << endl;
-
 
     cout << endl << "Method 2 of creating an instance of MatrixData" << endl;
     cout << "Providing the dimensions and rank of the matrix data" << endl;
@@ -89,14 +88,14 @@ int main(int argc, char** argv)
     // NOTE: 27 and 47 are arbitrary choices
     cout << "||M.getRow(27) - A_expected.row(27)|| = " << 
             af::mean<double>(M4.getRow(27) - A_expected.row(27)) << endl;
-    cout << "||M.getColumn(47) - A_expected.row(47)|| = " << 
-            af::mean<double>(M4.getColumn(47) - A_expected.col(47)) << endl;
+    cout << "||M.getCol(47) - A_expected.col(47)|| = " << 
+            af::mean<double>(M4.getCol(47) - A_expected.col(47)) << endl;
 
     cout << "Estimating the rank of this 1D kernel matrix:" << endl;
     cout << "Numerical Rank of Matrix = " << M4.estimateRank() << endl;
     cout << "Dimensionality = " << M4.getDimensionality() << endl << endl;
 
-    // Trying out the 2D kernel:
+    // // Trying out the 2D kernel:
     cout << "Trying out the 2D kernel..." << endl;
     target_coords = 1 + af::randu(100, 2, f64);
     source_coords = 3 + af::randu(200, 2, f64);
