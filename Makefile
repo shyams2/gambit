@@ -9,8 +9,8 @@ CC              = h5c++ $(COMPILER_OPTIONS)
 LIBS            = -laf
 LIB_PATHS       = -L $(AF_PATH)/lib
 INCLUDES        = -I $(AF_PATH)/include -I $(EIGEN_PATH) -I $(HIGHFIVE_PATH)/include -I ./header
-SOURCES         = ./test/testMatrixData.cpp
-EXECUTABLE      = ./exec/testMatrixData
+SOURCES         = ./test/testTree/testTree2D.cpp
+EXECUTABLE      = ./exec/testTree
 
 all:
 	$(CC) $(SOURCES) -o $(EXECUTABLE) $(INCLUDES) $(LIBS) $(LIB_PATHS)
