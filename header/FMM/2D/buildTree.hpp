@@ -1,488 +1,517 @@
-// The following nomenclature is used to describe the child cell number:
-// ============================
-// ||            |           ||
-// ||            |           ||
-// ||     3      |      4    ||
-// ||            |           ||
-// ||            |           ||
-// ============================
-// ||            |           ||
-// ||            |           ||
-// ||     1      |     2     ||
-// ||            |           ||
-// ||            |           ||
-// ============================
-FMM2DTree::getTransferParentToChild(int N_child, array &L2L)
+#include "FMM2DBox.hpp"
+#include "utils/determineCenterAndRadius.hpp"
+#include "assignBoxInteractions.hpp"
+#include <math.h>
+
+void buildTree()
 {
-    // Dividing the domain [-1, 1] to [-1, 0] and [0, 1]:
-    // Child Nodes which are < 0:
-    array child_nodes_1 = 0.5 * (this->standard_nodes - 1);
-    // Child Nodes which are > 0:
-    array child_nodes_2 = 0.5 * (this->standard_nodes + 1);
+    // Box at the root level. This box will contain all the particles
+    // under consideration. This is the box that will now be recursively
+    // subdivided until the smallest box only contains 4 * N_nodes^2 particles
+    FMM2DBox root;
 
-    // Getting nodes_x and nodes_y depending upon the quadrant:
-    array child_nodes_x, child_nodes_y;
+    root.box_number =  0;
+    root.N_level    =  0; // root is always on level 0
+    root.parent     = -1; // since it doesn't have a parent
+    root.is_leaf    = false;
 
-    if(N_child == 1)
+    #pragma omp parallel for
+    for (unsigned i = 0; i < 4; i++) 
     {
-        child_nodes_x = af::flat(af::tile(child_nodes_1, 1, this->N_nodes));
-        child_nodes_y = af::flat(af::tile(child_nodes_1.T(), this->N_nodes));
+        root.children[i] = i;
     }
 
-    else if(N_child == 2)
+    // Similarly since the root box doesn't have
+    // neighbors, inner or outer boxes, we assign -1:
+    #pragma omp parallel for
+    for (unsigned i = 0; i < 4; i++) 
     {
-        child_nodes_x = af::flat(af::tile(child_nodes_2, 1, this->N_nodes));
-        child_nodes_y = af::flat(af::tile(child_nodes_1.T(), this->N_nodes));
+        root.neighbor[i] = -1;
     }
 
-    else if(N_child == 3)
+    #pragma omp parallel for
+    for (unsigned i = 0; i < 16; i++) 
     {
-        child_nodes_x = af::flat(af::tile(child_nodes_2, 1, this->N_nodes));
-        child_nodes_y = af::flat(af::tile(child_nodes_2.T(), this->N_nodes));
+        root.inner[i] = -1;
     }
 
-    else if(N_child == 4)
+    #pragma omp parallel for
+    for (unsigned i = 0; i < 24; i++) 
     {
-        child_nodes_x = af::flat(af::tile(child_nodes_1, 1, this->N_nodes));
-        child_nodes_y = af::flat(af::tile(child_nodes_2.T(), this->N_nodes));
+        root.outer[i] = -1;
     }
 
-    else
-    {
-        cout << "INVALID!!!" << endl;
-        exit(1);
-    }
+    // Since the root level would consist of all the boxes:
+    root.inds_in_box = af::range(this->N, u32);
 
-    getL2L2D(child_nodes_x, child_nodes_y, this->standard_nodes, L2L);
-}
+    // Finding the radius and the centers:
+    determineCenterAndRadius((*(this->M->getSourceCoordsPtr))(af::span, 0), root.c_x, root.r_x);
+    determineCenterAndRadius((*(this->M->getSourceCoordsPtr))(af::span, 1), root.c_y, root.r_y);
 
-void FMM2DTree::assignChildrenInTree(FMM2DBox *node)
-{
-    // When number of particles in the box is zero:
-    if(node->N == 0)
-    {
-        node->is_leaf  = true;
-        node->is_empty = true;
-    }
-    
-    else
-    {
-        node.is_leaf  = false;
-        node.is_empty = false;
-        // Get the scaled nodes for the radius and center of this node:
-        scalePoints(0, 1, this->standard_nodes, node->c_x, node->r_x, node->scaled_nodes_x);
-        scalePoints(0, 1, this->standard_nodes, node->c_y, node->r_y, node->scaled_nodes_y);
+    // Pushing back the data onto the tree variable:
+    std::vector<FMM2DBox> root_level;
+    root_level.push_back(root);
+    tree.push_back(root_level);
 
-        // The following are operations on leaf cells:
-        // We are saying that if N < 4 * N_nodes^2, then terminate
-        if(node->N <= 4 * this->rank)
+    // Using this flag to check whether we have reached leaf level:
+    bool reached_leaf = false;
+    while(!reached_leaf)
+    {
+        this->max_levels++;
+        std::vector<FMM2DBox> level;
+        for(unsigned i = 0; i < pow(4, this->max_levels); i++) 
         {
-            node.is_leaf = true;
+            unsigned N_leaf_criterion = 0; // number of cells that satisfy leaf criterion
+            FMM2DBox box;
+            box.N_level    = this->max_levels;
+            box.box_number = i;
+            box.parent     = i / 4;
 
-            // Updating max_levels if needed:
-            if(this->max_levels < node->N_level)
+            FMM2DBox parent_node = &((tree.back()).at(box.parent));
+
+            // Assigning the new centers and radii:
+            box.c_x = parent_node.c_x + (((i - 4 * box.parent) % 2) - 0.5) * parent_node.r_x;
+            box.c_y = parent_node.c_y + (((i - 4 * box.parent) / 2) - 0.5) * parent_node.r_y;
+            box.r_x = 0.5 * parent_node.r_x;
+            box.r_y = 0.5 * parent_node.r_y;
+
+            // Locations local to the parent box:
+            array locations_local_x = (*(this->M->getSourceCoordsPtr))(parent_node.inds_in_box, 0); 
+            array locations_local_y = (*(this->M->getSourceCoordsPtr))(parent_node.inds_in_box, 1); 
+
+            // Finding the indices in the children:
+            box.inds_in_box = 
+            parent_node.inds_in_box(af::where(   locations_local_x < box.c_x + box.r_x
+                                              && locations_local_x > box.c_x - box.r_x
+                                              && locations_local_y < box.c_y + box.r_y
+                                              && locations_local_y > box.c_y - box.r_y
+                                             )
+                                   );
+
+            box.inds_in_box.eval();
+
+            // We are saying that if N < 4 * N_nodes^2, then it's 
+            // meets the criterion of being a leaf cell:
+            if(box.inds_in_box.elements()<= 4 * this->rank)
             {
-                this->max_levels = node->N_level;
+                N_leaf_criterion++;
             }
+
+            // Assigning children for the box:
+            for (unsigned j = 0; j < 4; j++) 
+            {
+                box.children[i] = 4 * i + j;
+            }
+
+            level.push_back(box);
         }
-    
-        // If it's not a leaf, then create children:
-        else
+
+        tree.push_back(level);
+        // If all the cells in the level have N < 4 * rank:
+        if(N_leaf_criterion == pow(4, this->max_levels))
+            reached_leaf = true;
+    }
+}
+
+// Assigns the relations for the children all boxes in the tree
+void FMM2DTree::assignTreeRelations() 
+{
+    for(int N_level = 0; N_level < this->max_levels; N_level++) 
+    {
+        #pragma omp parallel for
+        for(int N_box = 0; k < pow(4, N_level); N_box++) 
         {
-            for(unsigned i = 0, i < 4, i++)
-            {
-                FMM2DBox *child = new FMM2DBox;
-                child->N_level  = node->N_level + 1;
-                child->parent   = node
-
-                // Assigning the new centers and radii:
-                child->c_x = node->c_x + ((k % 2) - 0.5) * node->r_x;
-                child->c_y = node->c_y + ((k / 2) - 0.5) * node->r_y;
-                child->r_x = 0.5 * node->r_x;
-                child->r_y = 0.5 * node->r_y;
-
-                // Locations local to this current box:
-                array locations_local_x = this->locationGlobal(node->inds_in_box, 0); 
-                array locations_local_y = this->locationGlobal(node->inds_in_box, 1); 
-                
-                // Finding the indices in the children:
-                child->inds_in_box = node->inds_in_box(af::where(   location_local < node->c_x + node->r_x
-                                                                 && location_local < node->c_x + node->r_x
-                                                                 && location_local < node->c_x + node->r_x
-                                                                 && location_local < node->c_x + node->r_x
-                                                                )
-                                                      )
-            }
-        
-        // Now recursively perform the routine for the
-        // individual children as well until we hit a leaf node:
-        for(unsigned i = 0, i < 4, i++)
-            FMM2DBox::assignChildrenInTree(node->child.at(i));
+            assignChild0Relations(N_level, N_box);
+            assignChild1Relations(N_level, N_box);
+            assignChild2Relations(N_level, N_box);
+            assignChild3Relations(N_level, N_box);
         }
+    }
 }
 
-void buildTree(FMM2DBox *node)
+// For diagrams which elucidate the logic in the 
+// the following functions refer to https://goo.gl/TffP2B
+
+// Assigns the relations for child0 of a box
+void assignChild0Relations(int N_level, int N_box) 
 {
-    if(!node.is_empty)
-        if(!node.is_eaf)
-            assignSiblings(node)
+    // Level number for the child:
+    int N_lc = N_level + 1;
+    // Box number for the child:
+    int N_bc = 4 * N_box;
+    // Neighbor number in consideration:
+    int N_neighbor;
+
+    // Assign siblings
+    tree[N_lc][N_bc].neighbor[3] = N_bc + 1;
+    tree[N_lc][N_bc].neighbor[4] = N_bc + 2;
+    tree[N_lc][N_bc].neighbor[5] = N_bc + 3;
+
+    // Assign children of parent's zeroth neighbor
+    N_neighbor = tree[N_level][N_box].neighbor[0];
+    if(N_neighbor != -1) 
+    {
+        tree[N_lc][N_bc].inner[0]    = tree[N_level][N_neighbor].children[0];
+        tree[N_lc][N_bc].inner[1]    = tree[N_level][N_neighbor].children[1];
+        tree[N_lc][N_bc].neighbor[0] = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].inner[15]   = tree[N_level][N_neighbor].children[3];             
+    }
+
+    // Assign children of parent's first neighbor
+    N_neighbor = tree[N_level][N_box].neighbor[1];
+    if(N_neighbor != -1) 
+    {
+        tree[N_lc][N_bc].inner[2]    = tree[N_level][N_neighbor].children[0];
+        tree[N_lc][N_bc].inner[3]    = tree[N_level][N_neighbor].children[1];
+        tree[N_lc][N_bc].neighbor[2] = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].neighbor[1] = tree[N_level][N_neighbor].children[3];
+    }
+
+    // Assign children of parent's second neighbor
+    N_neighbor = tree[N_level][N_box].neighbor[2];
+    if(N_neighbor != -1) 
+    {
+        tree[N_lc][N_bc].inner[4] = tree[N_level][N_neighbor].children[0];
+        tree[N_lc][N_bc].outer[7] = tree[N_level][N_neighbor].children[1];
+        tree[N_lc][N_bc].outer[8] = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].inner[5] = tree[N_level][N_neighbor].children[3];             
+    }
+
+    // Assign children of parent's third neighbor
+    N_neighbor = tree[N_level][N_box].neighbor[3];
+    if(N_neighbor != -1) 
+    {
+        tree[N_lc][N_bc].inner[6]  = tree[N_level][N_neighbor].children[0];
+        tree[N_lc][N_bc].outer[9]  = tree[N_level][N_neighbor].children[1];
+        tree[N_lc][N_bc].outer[10] = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].inner[7]  = tree[N_level][N_neighbor].children[3];
+    }
+
+    // Assign children of parent's fourth neighbor
+    N_neighbor = tree[N_level][N_box].neighbor[4];
+    if(N_neighbor != -1) 
+    {
+        tree[N_lc][N_bc].inner[8]  = tree[N_level][N_neighbor].children[0];
+        tree[N_lc][N_bc].outer[11] = tree[N_level][N_neighbor].children[1];
+        tree[N_lc][N_bc].outer[12] = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].outer[13] = tree[N_level][N_neighbor].children[3];             
+    }
+
+    //  Assign children of parent's fifth neighbor
+    N_neighbor = tree[N_level][N_box].neighbor[5];
+    if(N_neighbor != -1) 
+    {
+        tree[N_lc][N_bc].inner[10] = tree[N_level][N_neighbor].children[0];
+        tree[N_lc][N_bc].inner[9]  = tree[N_level][N_neighbor].children[1];
+        tree[N_lc][N_bc].outer[14] = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].outer[15] = tree[N_level][N_neighbor].children[3];             
+    }
+
+    //  Assign children of parent's sixth neighbor
+    N_neighbor = tree[N_level][N_box].neighbor[6];
+    if(N_neighbor != -1) 
+    {
+        tree[N_lc][N_bc].inner[12] = tree[N_level][N_neighbor].children[0];
+        tree[N_lc][N_bc].inner[11] = tree[N_level][N_neighbor].children[1];
+        tree[N_lc][N_bc].outer[16] = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].outer[17] = tree[N_level][N_neighbor].children[3];             
+    }
+
+    //  Assign children of parent's seventh neighbor
+    N_neighbor = tree[N_level][N_box].neighbor[7];
+    if(N_neighbor != -1) 
+    {
+        tree[N_lc][N_bc].inner[14]   = tree[N_level][N_neighbor].children[0];
+        tree[N_lc][N_bc].neighbor[7] = tree[N_level][N_neighbor].children[1];
+        tree[N_lc][N_bc].neighbor[6] = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].inner[13]   = tree[N_level][N_neighbor].children[3];             
+    }
 }
 
-
-void FMM2DTree::assignSiblings(std::shared_ptr<FMM2DBox> node)
+// Assigns the relations for child1 of a box
+void assignChild1Relations(int N_level, int N_box) 
 {
-    // Consider the following numbering scheme for neighbors:
-    // ========================
-    // ||     ||      ||     ||
-    // ||  6  ||   5  ||  4  ||
-    // ||     ||      ||     ||
-    // ========================
-    // ||     ||      ||     ||
-    // ||  7  ||   x  ||  3  ||
-    // ||     ||      ||     ||
-    // ========================
-    // ||     ||      ||     ||
-    // ||  0  ||   1  ||  2  ||
-    // ||     ||      ||     ||
-    // ========================
+    // Level number for the child:
+    int N_lc = N_level + 1;
+    // Box number for the child:
+    int N_bc = 4 * N_box + 1;
+    // Neighbor number in consideration:
+    int N_neighbor;
 
-    // Assigning the siblings to child[0]:
-    ((node->child.at(0))->neighbor).at(3)      = node->child.at(1);
-    ((node->child.at(0))->neighbor).at(5)      = node->child.at(2);
-    ((node->child.at(0))->neighbor).at(4)      = node->child.at(3);
-    (node->child.at(0))->N_neighbor_allocated += 3;
+    // Assign siblings
+    tree[N_lc][N_bc].neighbor[7] = N_bc - 1;
+    tree[N_lc][N_bc].neighbor[5] = N_bc + 1;
+    tree[N_lc][N_bc].neighbor[6] = N_bc + 2;
 
-    // Assigning the siblings to child[1]:
-    ((node->child.at(1))->neighbor).at(7)      = node->child.at(0);
-    ((node->child.at(1))->neighbor).at(6)      = node->child.at(2);
-    ((node->child.at(1))->neighbor).at(5)      = node->child.at(3);
-    (node->child.at(0))->N_neighbor_allocated += 3;
+    // Assign children of parent's zeroth neighbor
+    N_neighbor = tree[N_level][N_box].neighbor[0];
+    if(N_neighbor != -1) 
+    {
+        tree[N_lc][N_bc].outer[23] = tree[N_level][N_neighbor].children[0];
+        tree[N_lc][N_bc].inner[0]  = tree[N_level][N_neighbor].children[1];
+        tree[N_lc][N_bc].inner[15] = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].outer[22] = tree[N_level][N_neighbor].children[3];             
+    }
 
-    // Assigning the siblings to child[2]:
-    ((node->child.at(2))->neighbor).at(1)      = node->child.at(0);
-    ((node->child.at(2))->neighbor).at(2)      = node->child.at(1);
-    ((node->child.at(2))->neighbor).at(3)      = node->child.at(3);
-    (node->child.at(0))->N_neighbor_allocated += 3;
+    // Assign children of parent's first neighbor
+    N_neighbor = tree[N_level][N_box].neighbor[1];
+    if(N_neighbor != -1) 
+    {
+        tree[N_lc][N_bc].inner[1]    = tree[N_level][N_neighbor].children[0];
+        tree[N_lc][N_bc].inner[2]    = tree[N_level][N_neighbor].children[1];
+        tree[N_lc][N_bc].neighbor[1] = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].neighbor[0] = tree[N_level][N_neighbor].children[3];             
+    }
 
-    // Assigning the siblings to child[3]:
-    ((node->child.at(3))->neighbor).at(0)      = node->child.at(0);
-    ((node->child.at(3))->neighbor).at(1)      = node->child.at(1);
-    ((node->child.at(3))->neighbor).at(7)      = node->child.at(2);
-    (node->child.at(0))->N_neighbor_allocated += 3;
+    // Assign children of parent's second neighbor
+    N_neighbor = tree[N_level][N_box].neighbor[2];
+    if(N_neighbor != -1) 
+    {
+        tree[N_lc][N_bc].inner[3]    = tree[N_level][N_neighbor].children[0];
+        tree[N_lc][N_bc].inner[4]    = tree[N_level][N_neighbor].children[1];
+        tree[N_lc][N_bc].inner[5]    = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].neighbor[2] = tree[N_level][N_neighbor].children[3];             
+    }
+
+    // Assign children of parent's third neighbor
+    N_neighbor = tree[N_level][N_box].neighbor[3];
+    if(N_neighbor != -1)
+    {
+        tree[N_lc][N_bc].neighbor[3] = tree[N_level][N_neighbor].children[0];
+        tree[N_lc][N_bc].inner[6]    = tree[N_level][N_neighbor].children[1];
+        tree[N_lc][N_bc].inner[7]    = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].neighbor[4] = tree[N_level][N_neighbor].children[3];             
+    }
+
+    // Assign children of parent's fourth neighbor
+    N_neighbor = tree[N_level][N_box].neighbor[4];
+    if(N_neighbor != -1) 
+    {
+        tree[N_lc][N_bc].inner[9]  = tree[N_level][N_neighbor].children[0];
+        tree[N_lc][N_bc].inner[8]  = tree[N_level][N_neighbor].children[1];
+        tree[N_lc][N_bc].outer[13] = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].outer[14] = tree[N_level][N_neighbor].children[3];             
+    }
+
+    // Assign children of parent's fifth neighbor
+    N_neighbor = tree[N_level][N_box].neighbor[5];
+    if(N_neighbor != -1) 
+    {
+        tree[N_lc][N_bc].inner[11] = tree[N_level][N_neighbor].children[0];
+        tree[N_lc][N_bc].inner[10] = tree[N_level][N_neighbor].children[1];
+        tree[N_lc][N_bc].outer[15] = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].outer[16] = tree[N_level][N_neighbor].children[3];             
+    }
+
+    // Assign children of parent's sixth neighbor
+    N_neighbor = tree[N_level][N_box].neighbor[6];
+    if(N_neighbor != -1) 
+    {
+        tree[N_lc][N_bc].outer[19] = tree[N_level][N_neighbor].children[0];
+        tree[N_lc][N_bc].inner[12] = tree[N_level][N_neighbor].children[1];
+        tree[N_lc][N_bc].outer[17] = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].outer[18] = tree[N_level][N_neighbor].children[3];             
+    }
+
+    // Assign children of parent's seventh neighbor
+    N_neighbor = tree[N_level][N_box].neighbor[7];
+    if(N_neighbor != -1) 
+    {
+        tree[N_lc][N_bc].outer[21] = tree[N_level][N_neighbor].children[0];
+        tree[N_lc][N_bc].inner[14] = tree[N_level][N_neighbor].children[1];
+        tree[N_lc][N_bc].inner[13] = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].outer[20] = tree[N_level][N_neighbor].children[3];             
+    }
 }
 
-void FMM2DTree::assignFourWellSeparatedCousins(std::shared_ptr<FMM2DBox> node, 
-                                               unsigned neighbor_number,
-                                               unsigned child_number
-                                              )
+// Assigns the relations for child2 of a box
+void assignChild2Relations(int N_level, int N_box)
 {
-      (node->child.at(child_number)->interaction).at(node->child.at(child_number)->N_interaction_allocated + 0) 
-    = (node->neighbor.at(neighbor_number))->child.at(0);
+    // Level number for the child:
+    int N_lc = N_level + 1;
+    // Box number for the child:
+    int N_bc = 4 * N_box + 2;
+    // Neighbor number in consideration:
+    int N_neighbor;
 
-      (node->child.at(child_number)->interaction).at(node->child.at(child_number)->N_interaction_allocated + 1) 
-    = (node->neighbor.at(neighbor_number))->child.at(1);
+    // Assign siblings
+    tree[N_lc][N_bc].neighbor[0] = N_bc - 2;
+    tree[N_lc][N_bc].neighbor[1] = N_bc - 1;
+    tree[N_lc][N_bc].neighbor[7] = N_bc + 1;
 
-      (node->child.at(child_number)->interaction).at(node->child.at(child_number)->N_interaction_allocated + 2) 
-    = (node->neighbor.at(neighbor_number))->child.at(2);
+    // Assign children of parent's zeroth neighbor
+    N_neighbor = tree[N_level][N_box].neighbor[0];
+    if(N_neighbor != -1) 
+    {
+        tree[N_lc][N_bc].outer[0]  = tree[N_level][N_neighbor].children[0];
+        tree[N_lc][N_bc].outer[1]  = tree[N_level][N_neighbor].children[1];
+        tree[N_lc][N_bc].inner[0]  = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].outer[23] = tree[N_level][N_neighbor].children[3];             
+    }
 
-      (node->child.at(child_number)->interaction).at(node->child.at(child_number)->N_interaction_allocated + 3) 
-    = (node->neighbor.at(neighbor_number))->child.at(3);
+    //  Assign children of parent's first neighbor
+    N_neighbor = tree[N_level][N_box].neighbor[1];
+    if(N_neighbor != -1) 
+    {
+        tree[N_lc][N_bc].outer[2] = tree[N_level][N_neighbor].children[0];
+        tree[N_lc][N_bc].outer[3] = tree[N_level][N_neighbor].children[1];
+        tree[N_lc][N_bc].inner[2] = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].inner[1] = tree[N_level][N_neighbor].children[3];             
+    }
 
-    node->child.at(child_number)->N_interaction_allocated += 4;
+    // Assign children of parent's second neighbor
+    N_neighbor = tree[N_level][N_box].neighbor[2];
+    if(N_neighbor != -1) 
+    {
+        tree[N_lc][N_bc].outer[4] = tree[N_level][N_neighbor].children[0];
+        tree[N_lc][N_bc].outer[5] = tree[N_level][N_neighbor].children[1];
+        tree[N_lc][N_bc].inner[4] = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].inner[3] = tree[N_level][N_neighbor].children[3];             
+    }
+
+    // Assign children of parent's third neighbor
+    N_neighbor = tree[N_level][N_box].neighbor[3];
+    if(N_neighbor != -1) 
+    {
+        tree[N_lc][N_bc].neighbor[2] = tree[N_level][N_neighbor].children[0];
+        tree[N_lc][N_bc].inner[5]    = tree[N_level][N_neighbor].children[1];
+        tree[N_lc][N_bc].inner[6]    = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].neighbor[3] = tree[N_level][N_neighbor].children[3];             
+    }
+
+    // Assign children of parent's fourth neighbor
+    N_neighbor = tree[N_level][N_box].neighbor[4];
+    if(N_neighbor != -1) 
+    {
+        tree[N_lc][N_bc].neighbor[4] = tree[N_level][N_neighbor].children[0];
+        tree[N_lc][N_bc].inner[7]    = tree[N_level][N_neighbor].children[1];
+        tree[N_lc][N_bc].inner[8]    = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].inner[9]    = tree[N_level][N_neighbor].children[3];             
+    }
+
+    // Assign children of parent's fifth neighbor
+    N_neighbor = tree[N_level][N_box].neighbor[5];
+    if(N_neighbor != -1) 
+    {
+        tree[N_lc][N_bc].neighbor[6] = tree[N_level][N_neighbor].children[0];
+        tree[N_lc][N_bc].neighbor[5] = tree[N_level][N_neighbor].children[1];
+        tree[N_lc][N_bc].inner[10]   = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].inner[11]   = tree[N_level][N_neighbor].children[3];             
+    }
+
+    // Assign children of parent's sixth neighbor
+    N_neighbor = tree[N_level][N_box].neighbor[6];
+    if(N_neighbor != -1) 
+    {
+        tree[N_lc][N_bc].outer[20] = tree[N_level][N_neighbor].children[0];
+        tree[N_lc][N_bc].inner[13] = tree[N_level][N_neighbor].children[1];
+        tree[N_lc][N_bc].inner[12] = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].outer[19] = tree[N_level][N_neighbor].children[3];             
+    }
+
+    // Assign children of parent's seventh neighbor
+    N_neighbor = tree[N_level][N_box].neighbor[7];
+    if(N_neighbor != -1) 
+    {
+        tree[N_lc][N_bc].outer[22] = tree[N_level][N_neighbor].children[0];
+        tree[N_lc][N_bc].inner[15] = tree[N_level][N_neighbor].children[1];
+        tree[N_lc][N_bc].inner[14] = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].outer[21] = tree[N_level][N_neighbor].children[3];             
+    }
 }
 
-void FMM2DTree::assignCousins(std::shared_ptr<FMM2DBox> node)
+// Assigns the relations for child2 of a box
+void assignChild3Relations(int N_level, int N_box)
 {
-    // Assigning children of neighbour 0
+    // Level number for the child:
+    int N_lc = N_level + 1;
+    // Box number for the child:
+    int N_bc = 4 * N_box + 3;
+    // Neighbor number in consideration:
+    int N_neighbor;
+
+    //  Assign siblings
+    tree[N_lc][N_bc].neighbor[1] = N_bc - 3;
+    tree[N_lc][N_bc].neighbor[2] = N_bc - 2;
+    tree[N_lc][N_bc].neighbor[3] = N_bc - 1;
+
+    //  Assign children of parent's zeroth neighbor
+    N_neighbor = tree[N_level][N_box].neighbor[0];
+    if(N_neighbor != -1) 
     {
-        // Assigning cousins to child[0]:
-        // Three well-separated cousins:
-          (node->child.at(0)->interaction).at(node->child.at(0)->N_interaction_allocated + 0) 
-        = (node->neighbor.at(0))->child.at(0);
-
-          (node->child.at(0)->interaction).at(node->child.at(0)->N_interaction_allocated + 1) 
-        = (node->neighbor.at(0))->child.at(1);
-
-          (node->child.at(0)->interaction).at(node->child.at(0)->N_interaction_allocated + 2) 
-        = (node->neighbor.at(0))->child.at(2);
-        
-        // One neighbor:
-        (node->child.at(0)->neighbor).at(0) = (node->neighbor.at(0))->child.at(3);
-        node->child.at(0)->N_interaction_allocated += 3;
-        node->child.at(0)->N_neighbor_allocated    += 1;
-
-        // Assigning cousins to child[1]:
-        // Four well-separated cousins:
-        FMM2DTree::assignFourWellSeparatedCousins(node, 0, 1);
-
-        // Assigning cousins to child[2]:
-        // Four well-separated cousins:
-        FMM2DTree::assignFourWellSeparatedCousins(node, 0, 2);
-
-        // Assigning cousins to child[3]:
-        // Four well-separated cousins:
-        FMM2DTree::assignFourWellSeparatedCousins(node, 0, 3);
+        tree[N_lc][N_bc].outer[1] = tree[N_level][N_neighbor].children[0];
+        tree[N_lc][N_bc].outer[2] = tree[N_level][N_neighbor].children[1];
+        tree[N_lc][N_bc].inner[1] = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].inner[0] = tree[N_level][N_neighbor].children[3];             
     }
 
-    // Assigning children of neighbour 1
+    //  Assign children of parent's first neighbor
+    N_neighbor = tree[N_level][N_box].neighbor[1];
+    if(N_neighbor != -1) 
     {
-        // Assigning cousins to child[0]:
-        // Two well-separated cousins:
-          (node->child.at(0)->interaction).at(node->child.at(0)->N_interaction_allocated + 0) 
-        = (node->neighbor.at(1))->child.at(0);
-
-          (node->child.at(0)->interaction).at(node->child.at(0)->N_interaction_allocated + 1) 
-        = (node->neighbor.at(1))->child.at(1);
-
-        // Two neighbors:
-        (node->child.at(0)->neighbor).at(1) = (node->neighbor.at(1))->child.at(2);
-        (node->child.at(0)->neighbor).at(2) = (node->neighbor.at(1))->child.at(3);
-
-        node->child.at(0)->N_interaction_allocated += 2;
-        node->child.at(0)->N_neighbor_allocated    += 2;
-
-        // Assigning cousins to child[1]:
-        // Two well-separated cousins:
-          (node->child.at(1)->interaction).at(node->child.at(1)->N_interaction_allocated + 0) 
-        = (node->neighbor.at(1))->child.at(0);
-
-          (node->child.at(1)->interaction).at(node->child.at(1)->N_interaction_allocated + 1) 
-        = (node->neighbor.at(1))->child.at(1);
-
-        // Two neighbors:
-        (node->child.at(1)->neighbor).at(0) = (node->neighbor.at(1))->child.at(2);
-        (node->child.at(1)->neighbor).at(1) = (node->neighbor.at(1))->child.at(3);
-
-        node->child.at(1)->N_interaction_allocated += 2;
-        node->child.at(1)->N_neighbor_allocated    += 2;
-
-        // Assigning cousins to child[2]:
-        // Four well-separated cousins:
-        FMM2DTree::assignFourWellSeparatedCousins(node, 1, 2);
-
-        // Assigning cousins to child[3]:
-        // Four well-separated cousins:
-        FMM2DTree::assignFourWellSeparatedCousins(node, 1, 3);
+        tree[N_lc][N_bc].outer[3] = tree[N_level][N_neighbor].children[0];
+        tree[N_lc][N_bc].outer[4] = tree[N_level][N_neighbor].children[1];
+        tree[N_lc][N_bc].inner[3] = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].inner[2] = tree[N_level][N_neighbor].children[3];             
     }
 
-    // Assigning children of neighbour 2
+    //  Assign children of parent's second neighbor
+    N_neighbor = tree[N_level][N_box].neighbor[2];
+    if(N_neighbor != -1) 
     {
-        // Assigning cousins to child[0]:
-        // Four well-separated cousins:
-        FMM2DTree::assignFourWellSeparatedCousins(node, 2, 0);
-        // Assigning cousins to child[1]:
-        // Three well-separated cousins:
-          (node->child.at(1)->interaction).at(node->child.at(1)->N_interaction_allocated + 0) 
-        = (node->neighbor.at(2))->child.at(0);
-
-          (node->child.at(1)->interaction).at(node->child.at(1)->N_interaction_allocated + 1) 
-        = (node->neighbor.at(2))->child.at(1);
-
-          (node->child.at(1)->interaction).at(node->child.at(1)->N_interaction_allocated + 2) 
-        = (node->neighbor.at(2))->child.at(3);
-
-        // One neighbor:
-        (node->child.at(1)->neighbor).at(2) = (node->neighbor.at(2))->child.at(2);
-  
-        node->child.at(1)->N_interaction_allocated += 3;
-        node->child.at(1)->N_neighbor_allocated    += 1;
-
-        // Assigning cousins to child[2]:
-        // Four well-separated cousins:
-        FMM2DTree::assignFourWellSeparatedCousins(node, 2, 2);
-
-        // Assigning cousins to child[3]:
-        // Four well-separated cousins:
-        FMM2DTree::assignFourWellSeparatedCousins(node, 2, 3);
-    }
-        node.child[3].nInteraction += 2
-
-        # Update neighbor count.
-        node.child[1].nNeighbor += 2
-        node.child[3].nNeighbor += 2
-
-    // Assigning children of neighbour 3
-    {
-        // Assigning cousins to child[0]:
-        // Four well-separated cousins:
-        FMM2DTree::assignFourWellSeparatedCousins(node, 3, 0);
-
-        // Assigning cousins to child[1]:
-        // Two well-separated cousins:
-          (node->child.at(1)->interaction).at(node->child.at(1)->N_interaction_allocated + 0) 
-        = (node->neighbor.at(3))->child.at(1);
-
-          (node->child.at(1)->interaction).at(node->child.at(1)->N_interaction_allocated + 1) 
-        = (node->neighbor.at(3))->child.at(3);
-
-        // Two neighbors:
-        (node->child.at(1)->neighbor).at(3) = (node->neighbor.at(3))->child.at(0);
-        (node->child.at(1)->neighbor).at(4) = (node->neighbor.at(3))->child.at(2);
-  
-        node->child.at(1)->N_interaction_allocated += 2;
-        node->child.at(1)->N_neighbor_allocated    += 2;
-
-        // Assigning cousins to child[2]:
-        // Four well-separated cousins:
-        FMM2DTree::assignFourWellSeparatedCousins(node, 3, 2);
-
-        // Assigning cousins to child[3]:
-        // Two well-separated cousins:
-          (node->child.at(3)->interaction).at(node->child.at(3)->N_interaction_allocated + 0) 
-        = (node->neighbor.at(3))->child.at(1);
-
-          (node->child.at(3)->interaction).at(node->child.at(3)->N_interaction_allocated + 1) 
-        = (node->neighbor.at(3))->child.at(3);
-
-        // Two neighbors:
-        (node->child.at(3)->neighbor).at(2) = (node->neighbor.at(3))->child.at(0);
-        (node->child.at(3)->neighbor).at(3) = (node->neighbor.at(3))->child.at(2);
-
-        node->child.at(3)->N_interaction_allocated += 2;
-        node->child.at(3)->N_neighbor_allocated    += 2;
+        tree[N_lc][N_bc].outer[5] = tree[N_level][N_neighbor].children[0];
+        tree[N_lc][N_bc].outer[6] = tree[N_level][N_neighbor].children[1];
+        tree[N_lc][N_bc].outer[7] = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].inner[4] = tree[N_level][N_neighbor].children[3];             
     }
 
-    // Assigning children of neighbour 4
+    //  Assign children of parent's third neighbor
+    N_neighbor = tree[N_level][N_box].neighbor[3];
+    if(N_neighbor != -1) 
     {
-        // Assigning cousins to child[0]:
-        // Four well-separated cousins:
-        FMM2DTree::assignFourWellSeparatedCousins(node, 4, 0);
-
-        // Assigning cousins to child[1]:
-        // Four well-separated cousins:
-        FMM2DTree::assignFourWellSeparatedCousins(node, 4, 1);
-
-        // Assigning cousins to child[2]:
-        // Four well-separated cousins:
-        FMM2DTree::assignFourWellSeparatedCousins(node, 4, 2);
-
-        // Assigning cousins to child[3]:
-        // Three well-separated cousins:
-          (node->child.at(3)->interaction).at(node->child.at(3)->N_interaction_allocated + 0) 
-        = (node->neighbor.at(4))->child.at(1);
-
-          (node->child.at(3)->interaction).at(node->child.at(3)->N_interaction_allocated + 1) 
-        = (node->neighbor.at(4))->child.at(2);
-
-          (node->child.at(3)->interaction).at(node->child.at(3)->N_interaction_allocated + 2) 
-        = (node->neighbor.at(4))->child.at(3);
-
-        // One neighbor:
-        (node->child.at(3)->neighbor).at(5) = (node->neighbor.at(4))->child.at(0);
-
-        node->child.at(3)->N_interaction_allocated += 3;
-        node->child.at(3)->N_neighbor_allocated    += 1;
+        tree[N_lc][N_bc].inner[5] = tree[N_level][N_neighbor].children[0];
+        tree[N_lc][N_bc].outer[8] = tree[N_level][N_neighbor].children[1];
+        tree[N_lc][N_bc].outer[9] = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].inner[6] = tree[N_level][N_neighbor].children[3];             
     }
 
-
-    // Assigning children of neighbour 5
+    //  Assign children of parent's fourth neighbor
+    N_neighbor = tree[N_level][N_box].neighbor[4];
+    if(N_neighbor != -1) 
     {
-        // Assigning cousins to child[0]:
-        // Four well-separated cousins:
-        FMM2DTree::assignFourWellSeparatedCousins(node, 5, 0);
-
-        // Assigning cousins to child[1]:
-        // Four well-separated cousins:
-        FMM2DTree::assignFourWellSeparatedCousins(node, 5, 1);
-
-        // Assigning cousins to child[2]:
-        // Two well-separated cousins:
-          (node->child.at(2)->interaction).at(node->child.at(2)->N_interaction_allocated + 0) 
-        = (node->neighbor.at(5))->child.at(2);
-
-          (node->child.at(2)->interaction).at(node->child.at(2)->N_interaction_allocated + 1) 
-        = (node->neighbor.at(5))->child.at(3);
-
-        // Two neighbors:
-        (node->child.at(2)->neighbor).at(5) = (node->neighbor.at(5))->child.at(0);
-        (node->child.at(2)->neighbor).at(4) = (node->neighbor.at(5))->child.at(1);
-
-        // Assigning cousins to child[3]:
-        // Two well-separated cousins:
-          (node->child.at(3)->interaction).at(node->child.at(3)->N_interaction_allocated + 0) 
-        = (node->neighbor.at(5))->child.at(2);
-
-          (node->child.at(3)->interaction).at(node->child.at(3)->N_interaction_allocated + 1) 
-        = (node->neighbor.at(5))->child.at(3);
-
-        // Two neighbors:
-        (node->child.at(3)->neighbor).at(5) = (node->neighbor.at(5))->child.at(1);
-        (node->child.at(3)->neighbor).at(6) = (node->neighbor.at(5))->child.at(0);
-
-        node->child.at(3)->N_interaction_allocated += 2;
-        node->child.at(3)->N_neighbor_allocated    += 2;
-    }
-    
-    // Assigning children of neighbour 6
-    {
-        // Assigning cousins to child[0]:
-        // Four well-separated cousins:
-        FMM2DTree::assignFourWellSeparatedCousins(node, 6, 0);
-
-        // Assigning cousins to child[1]:
-        // Four well-separated cousins:
-        FMM2DTree::assignFourWellSeparatedCousins(node, 6, 1);
-
-        // Assigning cousins to child[2]:
-        // Three well-separated cousins:
-          (node->child.at(2)->interaction).at(node->child.at(2)->N_interaction_allocated + 0) 
-        = (node->neighbor.at(6))->child.at(0);
-
-          (node->child.at(2)->interaction).at(node->child.at(2)->N_interaction_allocated + 1) 
-        = (node->neighbor.at(6))->child.at(2);
-
-          (node->child.at(2)->interaction).at(node->child.at(2)->N_interaction_allocated + 2) 
-        = (node->neighbor.at(6))->child.at(3);
-
-        // One neighbor:
-        (node->child.at(2)->neighbor).at(6) = (node->neighbor.at(6))->child.at(1);
-
-        node->child.at(2)->N_interaction_allocated += 1;
-        node->child.at(2)->N_neighbor_allocated    += 3;
-
-        // Assigning cousins to child[3]:
-        // Four well-separated cousins:
-        FMM2DTree::assignFourWellSeparatedCousins(node, 6, 3);
+        tree[N_lc][N_bc].inner[7]  = tree[N_level][N_neighbor].children[0];
+        tree[N_lc][N_bc].outer[10] = tree[N_level][N_neighbor].children[1];
+        tree[N_lc][N_bc].outer[11] = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].inner[8]  = tree[N_level][N_neighbor].children[3];             
     }
 
-    // Assigning children of neighbour 7
+    //  Assign children of parent's fifth neighbor
+    N_neighbor = tree[N_level][N_box].neighbor[5];
+    if(N_neighbor != -1) 
     {
-        // Assigning cousins to child[0]:
-        // Two well-separated cousins:
-          (node->child.at(0)->interaction).at(node->child.at(0)->N_interaction_allocated + 0) 
-        = (node->neighbor.at(7))->child.at(0);
+        tree[N_lc][N_bc].neighbor[5] = tree[N_level][N_neighbor].children[0];
+        tree[N_lc][N_bc].neighbor[4] = tree[N_level][N_neighbor].children[1];
+        tree[N_lc][N_bc].inner[9]    = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].inner[10]   = tree[N_level][N_neighbor].children[3];             
+    }
 
-          (node->child.at(0)->interaction).at(node->child.at(0)->N_interaction_allocated + 1) 
-        = (node->neighbor.at(7))->child.at(2);
+    //  Assign children of parent's sixth neighbor
+    N_neighbor = tree[N_level][N_box].neighbor[6];
+    if(N_neighbor != -1) 
+    {
+        tree[N_lc][N_bc].inner[13]   = tree[N_level][N_neighbor].children[0];
+        tree[N_lc][N_bc].neighbor[6] = tree[N_level][N_neighbor].children[1];
+        tree[N_lc][N_bc].inner[11]   = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].inner[12]   = tree[N_level][N_neighbor].children[3];             
+    }
 
-        // One neighbor:
-        (node->child.at(0)->neighbor).at(6) = (node->neighbor.at(7))->child.at(3);
-        (node->child.at(0)->neighbor).at(7) = (node->neighbor.at(7))->child.at(1);
-
-        node->child.at(0)->N_interaction_allocated += 2;
-        node->child.at(0)->N_neighbor_allocated    += 2;
-
-        // Assigning cousins to child[1]:
-        // Four well-separated cousins:
-        FMM2DTree::assignFourWellSeparatedCousins(node, 7, 1);
-
-        // Assigning cousins to child[2]:
-        // Two well-separated cousins:
-          (node->child.at(2)->interaction).at(node->child.at(2)->N_interaction_allocated + 0) 
-        = (node->neighbor.at(7))->child.at(0);
-
-          (node->child.at(2)->interaction).at(node->child.at(2)->N_interaction_allocated + 1) 
-        = (node->neighbor.at(7))->child.at(2);
-
-        // Two neighbors:
-        (node->child.at(2)->neighbor).at(0) = (node->neighbor.at(7))->child.at(1);
-        (node->child.at(2)->neighbor).at(7) = (node->neighbor.at(7))->child.at(3);
-
-        node->child.at(0)->N_interaction_allocated += 2;
-        node->child.at(0)->N_neighbor_allocated    += 2;
-
-        // Assigning cousins to child[3]:
-        // Four well-separated cousins:
-        FMM2DTree::assignFourWellSeparatedCousins(node, 7, 3);
+    //  Assign children of parent's seventh neighbor
+    N_neighbor = tree[N_level][N_box].neighbor[7];
+    if(N_neighbor != -1) 
+    {
+        tree[N_lc][N_bc].inner[15]   = tree[N_level][N_neighbor].children[0];
+        tree[N_lc][N_bc].neighbor[0] = tree[N_level][N_neighbor].children[1];
+        tree[N_lc][N_bc].neighbor[7] = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].inner[14]   = tree[N_level][N_neighbor].children[3];             
     }
 }

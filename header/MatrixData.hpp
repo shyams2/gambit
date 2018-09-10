@@ -38,7 +38,7 @@ class MatrixData
 private:
     // array being factorized
     // NOTE: Not necessarily allocated
-    array A;
+    array A, *A_ptr;
     // Number of rows and columns:
     size_t n_rows, n_cols;
     // Dimensionality of the points considered:
@@ -139,7 +139,7 @@ MatrixData::MatrixData(array& input_array)
 {
     this->n_rows = input_array.dims(0);
     this->n_cols = input_array.dims(1);
-    this->A      = input_array;
+    this->A_ptr  = &input_array;
 }
 
 MatrixData::MatrixData(size_t m, size_t n, size_t rank)
