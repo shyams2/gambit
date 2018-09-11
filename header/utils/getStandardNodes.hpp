@@ -1,3 +1,6 @@
+#ifndef __getStandardNodes_hpp__
+#define __getStandardNodes_hpp__
+
 #include <arrayfire.h>
 #include <cstdlib>
 #include <string>
@@ -76,3 +79,5 @@ void getStandardNodes(unsigned N_nodes, std::string nodes_type, array &standard_
         exit(1);
     }
 }
+
+#endif

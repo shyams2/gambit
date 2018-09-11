@@ -1,3 +1,6 @@
+#ifndef __determineCenterAndRadius_hpp__
+#define __determineCenterAndRadius_hpp__
+
 #include <iostream>
 #include <arrayfire.h>
 #include <string>
@@ -13,6 +16,9 @@ void determineCenterAndRadius(const af::array &input_array, double &center, doub
 {
     double max_val, min_val;
     determineBoundaries(input_array, max_val, min_val);
+
     center = 0.5 * (max_val + min_val);
     radius = 0.5 * (max_val - min_val);
 }
+
+#endif

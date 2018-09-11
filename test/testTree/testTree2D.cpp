@@ -40,6 +40,9 @@ int main(int argc, char** argv)
     // Creating an instance of MatrixData:
     MatrixData M(interaction_kernel, p1, p2);
 
+    // Array for the charges:
+    array charges = 2 * (af::randu(size, f64) - 1);
+
     // We then will pass these set of points to the FMM2D tree class:
-    FMM2DTree T(M);
+    FMM2DTree T(M, 4, "CHEBYSHEV", charges);
 }

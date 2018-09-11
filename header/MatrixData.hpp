@@ -44,11 +44,11 @@ private:
     // Dimensionality of the points considered:
     size_t n_dims;
     // The following get used when the kernel function is passed during instantiation:
-    std::function<array(array, array, array&, array&)> matrixEntriesAF;
+    std::function<array(array, array, const array&, const array&)> matrixEntriesAF;
     // When double* is used instead:
     std::function<double(unsigned, unsigned, double*, size_t, double*, size_t, size_t)> matrixEntriesDouble;
     // If the data is passed in AF form:
-    array sources_af, targets_af;
+    const array *sources_af, *targets_af;
     // If the data is passed in double* form:
     double *sources, *targets;
     string array_datatype; // whether af::array or double*
@@ -78,7 +78,7 @@ public:
     // j       - index / indices to access from sources
     // targets - 1D array of targets locations;
     // sources - 1D array of source locations;
-    MatrixData(std::function<array(array, array, array&, array&)> matrixEntries,
+    MatrixData(std::function<array(array, array, const array&, const array&)> matrixEntries,
                array &targets, array &sources
               );
 
@@ -127,8 +127,9 @@ public:
     // Gets the dimensionality:
     size_t getDimensionality();
     // Returns the source and target coordinates:
-    array getTargetCoordinates();
-    array getSourceCoordinates();
+    const array* getTargetCoordsPtr();
+    const array* getSourceCoordsPtr();
+
     // Dumps the array encoded to the file mentioned under the dataset name "array"
     void dumpArray(string file_name);
     // Loads back the data from the H5File onto the object:
@@ -189,7 +190,7 @@ MatrixData::MatrixData(size_t m, size_t n, double singular_min, double singular_
     this->A = af::matmul(U, S, V);
 }
 
-MatrixData::MatrixData(std::function<array(array, array, array&, array&)> matrixEntries,
+MatrixData::MatrixData(std::function<array(array, array, const array&, const array&)> matrixEntries,
                        array &targets, array &sources
                       )
 {
@@ -197,10 +198,10 @@ MatrixData::MatrixData(std::function<array(array, array, array&, array&)> matrix
     this->n_rows          = targets.dims(0);
     this->n_cols          = sources.dims(0);
 
-    this->targets_af = targets;
-    this->sources_af = sources;
+    this->targets_af = &targets;
+    this->sources_af = &sources;
 
-    this->n_dims  = 1;
+    this->n_dims = 1;
 
     if(targets.elements() != targets.dims(0))
     {
@@ -231,7 +232,7 @@ array MatrixData::buildArray()
     af::gforSet(true);
     array_to_return = this->matrixEntriesAF(af::range(this->n_rows),
                                             af::range(this->n_cols),
-                                            this->targets_af, this->sources_af
+                                            *(this->targets_af), *(this->sources_af)
                                            );
     af::gforSet(false);
 
@@ -372,7 +373,7 @@ array MatrixData::getRow(unsigned i)
         af::gforSet(true);
         array_to_return = this->matrixEntriesAF(af::constant(i, 1, u32),
                                                 af::range(this->n_cols),
-                                                this->targets_af, this->sources_af
+                                                *(this->targets_af), *(this->sources_af)
                                                );
         af::gforSet(false);
 
@@ -394,7 +395,7 @@ array MatrixData::getCol(unsigned i)
         af::gforSet(true);
         array_to_return = this->matrixEntriesAF(af::range(this->n_rows),
                                                 af::constant(i, 1, u32),
-                                                this->targets_af, this->sources_af
+                                                *(this->targets_af), *(this->sources_af)
                                                );
         af::gforSet(false);
 
@@ -422,12 +423,12 @@ size_t MatrixData::getDimensionality()
     return this->n_dims;
 }
 
-array MatrixData::getTargetCoordinates()
+const array* MatrixData::getTargetCoordsPtr()
 {
     return this->targets_af;
 }
 
-array MatrixData::getSourceCoordinates()
+const array* MatrixData::getSourceCoordsPtr()
 {
     return this->sources_af;
 }

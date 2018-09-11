@@ -6,7 +6,7 @@ CC              = h5c++ $(COMPILER_OPTIONS)
 # -lafcuda   - For CUDA backend
 # -lafopencl - For OpenCL backend
 # -laf       - For unified backend
-LIBS            = -laf
+LIBS            = -lafcpu
 LIB_PATHS       = -L $(AF_PATH)/lib
 INCLUDES        = -I $(AF_PATH)/include -I $(EIGEN_PATH) -I $(HIGHFIVE_PATH)/include -I ./header
 SOURCES         = ./test/testTree/testTree2D.cpp
