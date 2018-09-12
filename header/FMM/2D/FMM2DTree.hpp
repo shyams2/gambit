@@ -187,9 +187,11 @@ void FMM2DTree::buildTree()
 // Assigns the relations for the children all boxes in the tree
 void FMM2DTree::assignTreeRelations() 
 {
-    #pragma omp parallel for
+    // DO NOT USE OPENMP HERE!!!
     for(unsigned N_level = 0; N_level < this->max_levels; N_level++) 
     {
+        // #pragma omp parallel for
+        // Says Invalid control predicate
         for(unsigned N_box = 0; N_box < pow(4, N_level); N_box++) 
         {
             assignChild0Relations(N_level, N_box);
