@@ -6,7 +6,6 @@
 #include "FMM2DBox.hpp"
 #include "utils/getStandardNodes.hpp"
 #include "utils/determineCenterAndRadius.hpp"
-// #include "buildTree.hpp"
 
 // #include "utils/scalePoints.hpp"
 // #include "MatrixFactorizations/getInterpolation.hpp"
@@ -43,9 +42,32 @@ public:
     // Uses above functions to assign to all boxes in tree:
     void assignTreeRelations();
 
+    // Gives the box details of the prescribed box and level number:
+    void printBoxDetails(unsigned N_level, unsigned N_box);
+    // Lists details of all boxes in the tree
+    void printTreeDetails();
+
     // Transfer from parent to child:
     void getTransferParentToChild();
 };
+
+void FMM2DTree::printBoxDetails(unsigned N_level, unsigned N_box)
+{
+    tree[N_level][N_box].printBoxDetails();
+}
+
+void FMM2DTree::printTreeDetails()
+{
+    for(unsigned N_level = 0; N_level < this->max_levels; N_level++)
+    {
+        for(unsigned N_box = 0; N_box < pow(4, N_level); N_box++)
+        {
+            FMM2DTree::printBoxDetails(N_level, N_box);
+            cout << "==========================================================================================================================================" << endl;
+        }
+        cout << endl << endl;
+    }
+}
 
 FMM2DTree::FMM2DTree(MatrixData &M, unsigned N_nodes, std::string nodes_type, const array &charges)
 {   
@@ -63,6 +85,7 @@ FMM2DTree::FMM2DTree(MatrixData &M, unsigned N_nodes, std::string nodes_type, co
     cout << "Number of Levels in the Tree: " << this->max_levels << endl;
     cout << "Assigning Relations Amongst Boxes in the tree..." << endl;
     FMM2DTree::assignTreeRelations();
+    FMM2DTree::printTreeDetails();
 }
 
 void FMM2DTree::buildTree()
@@ -76,19 +99,21 @@ void FMM2DTree::buildTree()
     root.N_level =  0; // root is always on level 0
     root.parent  = -1; // since it doesn't have a parent
 
+    // ===================================================================
+    // Similarly since the root box doesn't have neighbors, inner or outer 
+    // boxes, we hold the default value -1 given by the constructor
+    // ===================================================================
+
     #pragma omp parallel for
     for (unsigned i = 0; i < 4; i++) 
     {
         root.children[i] = i;
     }
 
-    // Similarly since the root box doesn't have neighbors, inner or outer 
-    // boxes, we hold the default value -1 given by the constructor:
-
     // Since the root level would consist of all the boxes:
     root.inds_in_box = af::range(this->M_ptr->getNumCols(), 1, 1, 1, -1, u32);
 
-    // Finding the radius and the centers:
+    // Finding the radius and the centers for root:
     determineCenterAndRadius((*(this->M_ptr->getSourceCoordsPtr()))(af::span, 0), root.c_x, root.r_x);
     determineCenterAndRadius((*(this->M_ptr->getSourceCoordsPtr()))(af::span, 1), root.c_y, root.r_y);
 
@@ -104,9 +129,8 @@ void FMM2DTree::buildTree()
         this->max_levels++;
         std::vector<FMM2DBox> level;
         level.reserve(pow(4, this->max_levels));
-        cout << "INITIAL SIZE:" << level.size() << endl;
         unsigned N_leaf_criterion = 0; // number of cells that satisfy leaf criterion
-        for(unsigned i = 0; i < pow(4, this->max_levels); i++) 
+        for(unsigned i = 0; i < (unsigned) pow(4, this->max_levels); i++) 
         {
             FMM2DBox box;
             box.N_level = this->max_levels;
@@ -121,18 +145,12 @@ void FMM2DTree::buildTree()
             box.r_x = 0.5 * parent_node.r_x;
             box.r_y = 0.5 * parent_node.r_y;
 
-            cout << i       << endl;
-            cout << box.c_x << endl;
-            cout << box.c_y << endl;
-            cout << box.r_x << endl;
-            cout << box.r_y << endl;
-
             // Locations local to the parent box:
             array locations_local_x = (*(this->M_ptr->getSourceCoordsPtr()))(parent_node.inds_in_box, 0); 
             array locations_local_y = (*(this->M_ptr->getSourceCoordsPtr()))(parent_node.inds_in_box, 1); 
 
             // Finding the indices in the children:
-            box.inds_in_box = 
+            box.inds_in_box =
             parent_node.inds_in_box(af::where(   locations_local_x < box.c_x + box.r_x
                                               && locations_local_x > box.c_x - box.r_x
                                               && locations_local_y < box.c_y + box.r_y
@@ -142,8 +160,6 @@ void FMM2DTree::buildTree()
 
             box.inds_in_box.eval();
 
-            cout << box.inds_in_box.elements() << endl;
-
             // We are saying that if N < 4 * N_nodes^2, then it's 
             // meets the criterion of being a leaf cell:
             if(box.inds_in_box.elements()<= 4 * this->rank)
@@ -152,17 +168,15 @@ void FMM2DTree::buildTree()
             }
 
             // Assigning children for the box:
+            #pragma omp parallel for
             for(unsigned j = 0; j < 4; j++) 
             {
-                box.children[i] = 4 * i + j;
+                box.children[j] = 4 * i + j;
             }
 
-            cout << N_leaf_criterion << endl;
             level.push_back(box);
-            cout << "REACHED END OF ITERATION" << endl << endl;
         }
 
-        cout << "N_leaf " << N_leaf_criterion << endl;
         tree.push_back(level);
         // If all the cells in the level have N < 4 * rank:
         if(N_leaf_criterion == pow(4, this->max_levels))
@@ -174,9 +188,9 @@ void FMM2DTree::buildTree()
 void FMM2DTree::assignTreeRelations() 
 {
     #pragma omp parallel for
-    for(int N_level = 0; N_level < this->max_levels; N_level++) 
+    for(unsigned N_level = 0; N_level < this->max_levels; N_level++) 
     {
-        for(int N_box = 0; N_box < pow(4, N_level); N_box++) 
+        for(unsigned N_box = 0; N_box < pow(4, N_level); N_box++) 
         {
             assignChild0Relations(N_level, N_box);
             assignChild1Relations(N_level, N_box);
