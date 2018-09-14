@@ -44,6 +44,6 @@ int main(int argc, char** argv)
     array charges = 2 * (af::randu(size, f64) - 1);
 
     // We then will pass these set of points to the FMM2D tree class:
-    FMM2DTree T(M, 2, "CHEBYSHEV", charges);
+    FMM2DTree T(M, 3, "CHEBYSHEV", charges);
     
 }

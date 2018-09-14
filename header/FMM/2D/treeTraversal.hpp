@@ -1,17 +1,3 @@
-// The following nomenclature is used to describe the child cell number:
-// ============================
-// ||            |           ||
-// ||            |           ||
-// ||     3      |      2    ||
-// ||            |           ||
-// ||            |           ||
-// ============================
-// ||            |           ||
-// ||            |           ||
-// ||     0      |     1     ||
-// ||            |           ||
-// ||            |           ||
-// ============================
 FMM2DTree::getTransferParentToChild(int N_child, array &L2L)
 {
     // Dividing the domain [-1, 1] to [-1, 0] and [0, 1]:

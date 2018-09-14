@@ -100,7 +100,7 @@ public:
     // The entry (i, j) in this matrix would give the interaction between the
     // i-th target and the j-th source
     array buildArray();
-    array buildArray(size_t n_rows, size_t n_cols, array targets, array sources);
+    array buildArray(size_t n_rows, size_t n_cols, array &targets, array &sources);
 
     // Estimates the rank of the matrix encoded using SVD
     int estimateRank(double tolerance);
@@ -241,7 +241,7 @@ array MatrixData::buildArray()
 
 // Overloaded function when the new(interpolated) sources / target locations and 
 // directly provide to function used to build the kernel operator's entries:
-array MatrixData::buildArray(size_t n_rows, size_t n_cols, array targets, array sources)
+array MatrixData::buildArray(size_t n_rows, size_t n_cols, array &targets, array &sources)
 {
     array array_to_return;
     // Allowing broadcasting:

@@ -97,7 +97,7 @@ void getL2L3D(array &x, array &y, array &z, array &nodes, array &L2L)
     L2L.eval();
 }
 
-void getM2L(const array &nodes_1, const array &nodes_2, MatrixData &M, array &M2L)
+void getM2L(array &nodes_1, array &nodes_2, MatrixData &M, array &M2L)
 {
     // Evaluating the Kernel function at the Chebyshev nodes:
     M2L = M.buildArray(int(nodes_1.dims(0)), int(nodes_2.dims(0)),
@@ -113,8 +113,8 @@ namespace MatrixFactorizer
         array standard_nodes;
         
         getStandardNodes(n_nodes, interpolation_type, standard_nodes);
-        array target_coords = M.getTargetCoordinates();
-        array source_coords = M.getSourceCoordinates();
+        array target_coords = *(M.getTargetCoordsPtr());
+        array source_coords = *(M.getSourceCoordsPtr());
 
         if(M.getDimensionality() == 1)
         {
@@ -138,7 +138,7 @@ namespace MatrixFactorizer
             // Initializing U, S, V:
             U = af::constant(0, M.getNumRows(), n_nodes, f64);
             S = array(n_nodes, n_nodes, f64);
-            V = af::constant(0, M.getNumColumns(), n_nodes, f64);
+            V = af::constant(0, M.getNumCols(), n_nodes, f64);
 
             getL2L1D(standard_targets, standard_nodes, U);
             getM2L(nodes_targets, nodes_sources, M, S);

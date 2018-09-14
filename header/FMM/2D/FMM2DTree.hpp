@@ -6,9 +6,9 @@
 #include "FMM2DBox.hpp"
 #include "utils/getStandardNodes.hpp"
 #include "utils/determineCenterAndRadius.hpp"
+#include "MatrixFactorizations/getInterpolation.hpp"
 
 // #include "utils/scalePoints.hpp"
-// #include "MatrixFactorizations/getInterpolation.hpp"
 
 class FMM2DTree 
 {
@@ -20,9 +20,17 @@ private:
     unsigned max_levels;     // Number of levels in the tree.
                        
     const array *charges_ptr; // Holds the information for the charges of the points
-    array standard_nodes_1d;  // Standard nodes alloted as given by user choice
+    array standard_nodes_1d;  // Standard nodes alloted as given by user choice in [-1, 1]
+    array standard_nodes;     // Gets the points in 2D
     std::string nodes_type;   // Whether Chebyshev, or Legendre or Equispaced
 
+    std::array<af::array, 4> standard_nodes_child; 
+    std::array<af::array, 8> neighbor_interaction;
+    std::array<af::array, 4> L2L;
+    std::array<af::array, 4> M2M;
+    std::array<af::array, 16> M2L_inner;
+    std::array<af::array, 24> M2L_outer;
+    array self_interaction;
     std::vector<std::vector<FMM2DBox>> tree; // The tree storing all the information.
 
 public:
@@ -48,7 +56,11 @@ public:
     void printTreeDetails();
 
     // Transfer from parent to child:
-    void getTransferParentToChild();
+    void getTransferMatrices();
+    // Getting M2L operators:
+    void getM2L();
+    // Getting leaf level operators(neighbor and self interactions):
+    void getLeafLevelInteractions();
 };
 
 void FMM2DTree::printBoxDetails(unsigned N_level, unsigned N_box)
@@ -80,12 +92,117 @@ FMM2DTree::FMM2DTree(MatrixData &M, unsigned N_nodes, std::string nodes_type, co
     
     // Finding the standard nodes(in [-1, 1]):
     getStandardNodes(N_nodes, nodes_type, this->standard_nodes_1d);
+
+    // Array which stores the tiled version of the nodes:
+    array nodes_tiled = af::tile(this->standard_nodes_1d, 1, N_nodes);
+
+    // Getting the standard nodes in 2D:
+    this->standard_nodes = af::join(1, 
+                                    af::flat(nodes_tiled),
+                                    af::flat(af::reorder(nodes_tiled, 1, 0))
+                                   );
+    this->standard_nodes.eval();
+
+    // Getting the standard nodes for the children:
+    array child_nodes;
+
+    // We now proceed to divide the standard domain [-1, 1] to [-1, 0] and [0, 1]:
+    // =================== NOTE ===========================
+    // The following nomenclature is used to describe the child cell number:
+    // ============================
+    // ||            |           ||
+    // ||            |           ||
+    // ||     3      |      2    ||
+    // ||            |           ||
+    // ||            |           ||
+    // ============================
+    // ||            |           ||
+    // ||            |           ||
+    // ||     0      |     1     ||
+    // ||            |           ||
+    // ||            |           ||
+    // ============================
+
+    // For child0:
+    child_nodes = 0.5 * (this->standard_nodes - 1);
+    child_nodes.eval();
+    this->standard_nodes_child[0] = child_nodes;
+
+    // For child1:
+    child_nodes = af::join(1,
+                           0.5 * (this->standard_nodes(af::span, 0) + 1),
+                           0.5 * (this->standard_nodes(af::span, 1) - 1)
+                          );
+    child_nodes.eval();
+    this->standard_nodes_child[1] = child_nodes;
+
+    // For child2:
+    child_nodes = 0.5 * (this->standard_nodes + 1);
+    child_nodes.eval();
+    this->standard_nodes_child[2] = child_nodes;
+
+    // For child3:
+    child_nodes = af::join(1,
+                           0.5 * (this->standard_nodes(af::span, 0) - 1),
+                           0.5 * (this->standard_nodes(af::span, 1) + 1)
+                          );
+    child_nodes.eval();
+    this->standard_nodes_child[3] = child_nodes;
+
+    // Getting Transfer Matrices(that is M2M and L2L):
+    cout << "Getting Transfer Matrices..." << endl;
+    FMM2DTree::getTransferMatrices();
     cout << "Building Tree..." << endl;
     FMM2DTree::buildTree();
     cout << "Number of Levels in the Tree: " << this->max_levels << endl;
     cout << "Assigning Relations Amongst Boxes in the tree..." << endl;
     FMM2DTree::assignTreeRelations();
-    FMM2DTree::printTreeDetails();
+    cout << "Getting M2L and neighbor interactions" << endl;
+}
+
+void FMM2DTree::getTransferMatrices()
+{
+    array nodes_x, nodes_y, L2L_array;
+    // Initializing L2L array
+    L2L_array = array(N_nodes * N_nodes, N_nodes * N_nodes, f64);
+    
+    // For child0:
+    nodes_x = (this->standard_nodes_child[0])(af::span, 0);
+    nodes_y = (this->standard_nodes_child[0])(af::span, 1);
+
+    getL2L2D(nodes_x, nodes_y, this->standard_nodes_1d, L2L_array);
+    L2L_array.eval();
+    this->L2L[0] = L2L_array;
+
+    // For child1:
+    nodes_x = (this->standard_nodes_child[1])(af::span, 0);
+    nodes_y = (this->standard_nodes_child[1])(af::span, 1);
+
+    getL2L2D(nodes_x, nodes_y, this->standard_nodes_1d, L2L_array);
+    L2L_array.eval();
+    this->L2L[1] = L2L_array;
+
+    // For child2:
+    nodes_x = (this->standard_nodes_child[2])(af::span, 0);
+    nodes_y = (this->standard_nodes_child[2])(af::span, 1);
+
+    getL2L2D(nodes_x, nodes_y, this->standard_nodes_1d, L2L_array);
+    L2L_array.eval();
+    this->L2L[2] = L2L_array;
+
+    // For child3:
+    nodes_x = (this->standard_nodes_child[3])(af::span, 0);
+    nodes_y = (this->standard_nodes_child[3])(af::span, 1);
+
+    getL2L2D(nodes_x, nodes_y, this->standard_nodes_1d, L2L_array);
+    L2L_array.eval();
+    this->L2L[3] = L2L_array;
+
+    for(unsigned i = 0; i < 4; i++)
+    {
+        this->M2M[i] = this->L2L[i].T();
+        this->M2M[i].eval();
+    }
 }
 
 void FMM2DTree::buildTree()
@@ -191,7 +308,7 @@ void FMM2DTree::assignTreeRelations()
     for(unsigned N_level = 0; N_level < this->max_levels; N_level++) 
     {
         // #pragma omp parallel for
-        // Says Invalid control predicate
+        // Says Invalid control predicate??
         for(unsigned N_box = 0; N_box < pow(4, N_level); N_box++) 
         {
             assignChild0Relations(N_level, N_box);
@@ -587,6 +704,162 @@ void FMM2DTree::assignChild3Relations(int N_level, int N_box)
         tree[N_lc][N_bc].neighbor[7] = tree[N_level][N_neighbor].children[2];
         tree[N_lc][N_bc].inner[14]   = tree[N_level][N_neighbor].children[3];             
     }
+}
+
+void FMM2DTree::getM2LInteractions() 
+{
+    array M2L;
+
+    // Getting outer interactions:
+    for(unsigned i = 0; i < 6; i++)
+    {
+        nodes= af::join(1, this->standard_nodes(af::span, 0) + 2 * (i - 3),
+                        this->standard_nodes(af::span, 1) - 6
+                       )
+
+        getM2L(this->standard_nodes, nodes, *(this->M_ptr), M2L);
+        M2L.eval();
+        this->M2L_outer[i] = M2L;
+    }
+
+    for(unsigned i = 0; i < 6; i++)
+    {
+        nodes= af::join(1, this->standard_nodes(af::span, 0) + 6,
+                        this->standard_nodes(af::span, 1) + 2 * (i - 3)
+                       )
+
+        getM2L(this->standard_nodes, nodes, *(this->M_ptr), M2L);
+        M2L.eval();
+        this->M2L_outer[i + 6] = M2L;
+    }
+
+    for(unsigned i = 0; i < 6; i++)
+    {
+        nodes= af::join(1, this->standard_nodes(af::span, 0) + 2 * (3 - i),
+                        this->standard_nodes(af::span, 1) + 6
+                       )
+
+        getM2L(this->standard_nodes, nodes, *(this->M_ptr), M2L);
+        M2L.eval();
+        this->M2L_outer[i + 12] = M2L;
+    }
+
+    for(unsigned i = 0; i < 6; i++)
+    {
+        nodes= af::join(1, this->standard_nodes(af::span, 0) - 6,
+                        this->standard_nodes(af::span, 1) + 2 * (3 - i)
+                       )
+
+        getM2L(this->standard_nodes, nodes, *(this->M_ptr), M2L);
+        M2L.eval();
+        this->M2L_outer[i + 18] = M2L;
+    }
+
+    // Getting inner interactions:
+    for(unsigned i = 0; i < 4; i++)
+    {
+        nodes= af::join(1, this->standard_nodes(af::span, 0) + 2 * (i - 2),
+                        this->standard_nodes(af::span, 1) - 4
+                       )
+
+        getM2L(this->standard_nodes, nodes, *(this->M_ptr), M2L);
+        M2L.eval();
+        this->M2L_inner[i] = M2L;
+    }
+
+    for(unsigned i = 0; i < 4; i++)
+    {
+        nodes= af::join(1, this->standard_nodes(af::span, 0) + 4,
+                        this->standard_nodes(af::span, 1) + 2 * (i - 2)
+                       )
+
+        getM2L(this->standard_nodes, nodes, *(this->M_ptr), M2L);
+        M2L.eval();
+        this->M2L_inner[i + 4] = M2L;
+    }
+
+    for(unsigned i = 0; i < 4; i++)
+    {
+        nodes= af::join(1, this->standard_nodes(af::span, 0) + 2 * (2 - i),
+                        this->standard_nodes(af::span, 1) + 4
+                       )
+
+        getM2L(this->standard_nodes, nodes, *(this->M_ptr), M2L);
+        M2L.eval();
+        this->M2L_inner[i + 8] = M2L;
+    }
+
+    for(unsigned i = 0; i < 4; i++)
+    {
+        nodes= af::join(1, this->standard_nodes(af::span, 0) - 4,
+                        this->standard_nodes(af::span, 1) + 2 * (2 - i)
+                       )
+
+        getM2L(this->standard_nodes, nodes, *(this->M_ptr), M2L);
+        M2L.eval();
+        this->M2L_inner[i + 12] = M2L;
+    }
+}
+
+void FMM2DTree::getLeafLevelInteractions()
+{
+    array M2L;
+    // Get neighbor interactions:
+    r_x_leaf = this->tree[this->max_levels][0].r_x; // since its a uniform tree, 
+                                                    // we don't bother about the box considered
+    r_y_leaf = this->tree[this->max_levels][0].r_y;
+
+    leaf_nodes = af::join(1, this->standard_nodes(af::span, 0) * r_x_leaf,
+                          this->standard_nodes(af::span, 1) * r_y_leaf
+                         );
+
+    for(unsigned i = 0; i < 2; i++)
+    {
+        nodes= af::join(1, (this->standard_nodes(af::span, 0) + 2 * (i - 1)) * r_x_leaf,
+                        (this->standard_nodes(af::span, 1) - 2) * r_y_leaf
+                       );
+
+        getM2L(leaf_nodes, nodes, *(this->M_ptr), M2L);
+        M2L.eval();
+        this->neighbor_interaction[i] = M2L;
+    }
+
+    for(unsigned i = 0; i < 2; i++)
+    {
+        nodes= af::join(1, (this->standard_nodes(af::span, 0) + 2) * r_x_leaf,
+                        (this->standard_nodes(af::span, 1) + 2 * (i - 1)) * r_y_leaf
+                       );
+        getM2L(leaf_nodes, nodes, *(this->M_ptr), M2L);
+        M2L.eval();
+        this->neighbor_interaction[i + 2] = M2L;
+    }
+
+
+    for(unsigned i = 0; i < 2; i++)
+    {
+        nodes= af::join(1, (this->standard_nodes(af::span, 0) + 2 * (1 - i)) * r_x_leaf,
+                        (this->standard_nodes(af::span, 1) + 2) * r_y_leaf
+                       )
+
+        getM2L(this->standard_nodes, nodes, *(this->M_ptr), M2L);
+        M2L.eval();
+        this->neighbor_interaction[i + 4] = M2L;
+    }
+
+    for(unsigned i = 0; i < 2; i++)
+    {
+        nodes= af::join(1, (this->standard_nodes(af::span, 0) - 2) * r_x_leaf,
+                        (this->standard_nodes(af::span, 1) + 2 * (1 - i)) * r_y_leaf
+                       )
+
+        getM2L(this->standard_nodes, nodes, *(this->M_ptr), M2L);
+        M2L.eval();
+        this->neighbor_interaction[i + 6] = M2L;
+    }
+
+    // Getting self-interaction:
+    getM2L(leaf_nodes, leaf_nodes, *(this->M_ptr), this->self_interaction);
+    this->self_interaction.eval();
 }
 
 #endif
