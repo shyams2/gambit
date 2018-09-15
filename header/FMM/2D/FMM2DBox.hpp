@@ -69,7 +69,9 @@ public:
     int inner[16];    // box numbers of the inner boxes
     int outer[24];    // box numbers of the outer boxes
 
-    array nodes;      // nodes at the leaf level
+    array nodes;      // nodes at the leaf level. In case the kernel is neither homogeneous or log-homogeneous
+                      // we will proceed to find these for all the levels.
+    
     array multipoles, locals;
 
     // Constructor for the class

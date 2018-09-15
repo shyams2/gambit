@@ -2,7 +2,7 @@
 // that has been carried out to implement to the Fast Multipole Method.
 
 #include "MatrixData.hpp"
-#include "FMM/2D/FMM2DTree.hpp"
+// #include "FMM/2D/FMM2DTree.hpp"
 
 // Log(R) kernel:
 // K(r) = log(R):
@@ -43,7 +43,12 @@ int main(int argc, char** argv)
     // Array for the charges:
     array charges = 2 * (af::randu(size, f64) - 1);
 
+    cout << M.isTranslationInvariant() << endl;
+    cout << M.isHomogeneous() << endl;
+    cout << M.isLogHomogeneous() << endl;
+    cout << M.getDegreeOfHomogeneity() << endl;
+    
     // We then will pass these set of points to the FMM2D tree class:
-    FMM2DTree T(M, 3, "CHEBYSHEV", charges);
+    // FMM2DTree T(M, 3, "CHEBYSHEV", charges);
     
 }

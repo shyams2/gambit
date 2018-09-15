@@ -21,6 +21,7 @@
 #include <arrayfire.h>
 #include <assert.h>
 #include <cmath>
+#include <cstdlib>
 // Headers needed for file-writing with HighFive:
 #include <highfive/H5DataSet.hpp>
 #include <highfive/H5DataSpace.hpp>
@@ -134,6 +135,12 @@ public:
     void dumpArray(string file_name);
     // Loads back the data from the H5File onto the object:
     void loadArray(string file_name);
+
+    // Determine the kernel type:
+    bool isTranslationInvariant();
+    bool isHomogenous();
+    bool isLogHomogeneous();
+    double getDegreeOfHomogeneity();
 };
 
 MatrixData::MatrixData(array& input_array)
@@ -461,5 +468,78 @@ void MatrixData::loadArray(string file_name)
     dataset.read(temp);
     this->A = array(this->getNumRows(), this->getNumCols(), temp.data(), afHost);
 }
+
+bool MatrixData::isTranslationInvariant()
+{   
+    array x = af::randu(10, MatrixData::getDimensionality(), f64);
+    array y = af::randu(10, MatrixData::getDimensionality(), f64);
+
+    af::gforSet(true);
+    array res = this->matrixEntriesAF(af::range(10),
+                                      af::range(10),
+                                      x, y
+                                     );
+    af::gforSet(false);
+
+    double shift = (double) rand() / RAND_MAX;
+    
+    af::gforSet(true);
+    array res_shift = this->matrixEntriesAF(af::range(10, 1, 1, 1, -1, u32),
+                                            af::range(10, 1, 1, 1, -1, u32),
+                                            x + shift, y + shift
+                                           );
+    af::gforSet(false);
+
+    if(af::norm(res - res_shift) < 1e-14)
+        return true;
+
+    else
+        return false;
+}
+
+bool MatrixData::isHomogenous()
+{
+    array x = af::randu(10, MatrixData::getDimensionality(), f64);
+    array y = af::randu(10, MatrixData::getDimensionality(), f64);
+
+    af::gforSet(true);
+    array res = this->matrixEntriesAF(af::range(10),
+                                      af::range(10),
+                                      x, y
+                                     );
+    af::gforSet(false);
+
+    double scale_1 = (double) rand() / RAND_MAX;
+
+    af::gforSet(true);
+    array res_scale_1 = this->matrixEntriesAF(af::range(10, 1, 1, 1, -1, u32),
+                                              af::range(10, 1, 1, 1, -1, u32),
+                                              x * scale_1, y * scale_1
+                                             );
+    af::gforSet(false);
+
+    // Change of base: log_a x / log_a b = log_b x
+    // We want to get log_{scale} (res_scaled / res) = alpha if kernel is homogeneous
+    double alpha_1  = af::log(res_scale_1 / res) / af::log(scale_1)
+
+    double scale_2 = (double) rand() / RAND_MAX;
+
+    af::gforSet(true);
+    array res_scale_2 = this->matrixEntriesAF(af::range(10, 1, 1, 1, -1, u32),
+                                              af::range(10, 1, 1, 1, -1, u32),
+                                              x * scale_2, y * scale_2
+                                             );
+    af::gforSet(false);
+
+    double alpha_2  = af::log(res_scale_2 / res) / af::log(scale_2)
+
+    // Now if the kernel is indeed homogeneous, alpha_1 and alpha_2 MUST match:
+    if(fabs(alpha_1 - alpha_2)< 1e-14)
+        return true;
+
+    else
+        return false;
+}
+
 
 #endif

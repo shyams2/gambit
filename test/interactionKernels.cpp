@@ -38,25 +38,26 @@ void computeRSquared3D(array &i, array &j, array &targets, array &sources, array
 }
 
 // Laplace Equation: -Δ u = 0
-// ===============SINGLE LAYER LAPLACE EQUATION KERNEL 2D========================
+// ===============SINGLE LAYER LAPLACE EQUATION KERNEL========================
+// In 2D:
 // S(x, y) =  - (1 / 2π) ln(r); r != 0, 0 if r = 0
-array laplaceSingleLayer2D(array &i, array &j, array &targets, array &sources)
-{   
-    array r_squared;
-    computeRSquared2D(i, j, targets, sources, r_squared);
-    array interaction = af::select(r_squared == 0, 0, (-1 / (4 * af::Pi)) * af::log(r_squared)); 
-
-    interaction.eval();
-    return interaction;
-}
-
-// ===============SINGLE LAYER LAPLACE EQUATION KERNEL 3D========================
+// In 3D:
 // S(x, y) = (1 / 4πr); r != 0, 0 if r = 0
-array laplaceSingleLayer3D(array &i, array &j, array &targets, array &sources)
+array laplaceSingleLayer(array &i, array &j, array &targets, array &sources)
 {   
-    array r_squared;
-    computeRSquared3D(i, j, targets, sources, r_squared);
-    array interaction = af::select(r_squared == 0, 0, 1 / (4 * af::Pi * af::sqrt(r_squared))); 
+    array r_squared, interaction;
+
+    else if(target.dims(1) == 2)
+    {
+        computeRSquared2D(i, j, targets, sources, r_squared);
+        interaction = af::select(r_squared == 0, 0, (-1 / (4 * af::Pi)) * af::log(r_squared)); 
+    }
+
+    else // assuming dim = 3
+    {
+        computeRSquared3D(i, j, targets, sources, r_squared);
+        interaction = af::select(r_squared == 0, 0, 1 / (4 * af::Pi * af::sqrt(r_squared))); 
+    }
 
     interaction.eval();
     return interaction;
@@ -66,8 +67,25 @@ array laplaceSingleLayer3D(array &i, array &j, array &targets, array &sources)
 // K(x, y) = 1 / (1 + r^2)
 array inverseQuadricKernel(array &i, array &j, array &targets, array &sources)
 {   
-    array r           = targets(i) - (sources.T())(j);
-    array interaction = 1 / (1 + r * r);
+    array r, r_squared, interaction;
+    
+    if(target.dims(0) == target.elements())
+    {
+        r           = targets(i) - (sources.T())(j)
+        interaction = 1 / (1 + r * r);
+    }
+
+    else if(target.dims(1) == 2)
+    {
+        computeRSquared2D(i, j, targets, sources, r_squared);
+        interaction = 1 / (1 + r_squared);
+    }
+
+    else // assuming dim = 3
+    {
+        computeRSquared3D(i, j, targets, sources, r_squared);
+        interaction = 1 / (1 + r_squared);
+    }
 
     interaction.eval();
     return interaction;
@@ -77,9 +95,26 @@ array inverseQuadricKernel(array &i, array &j, array &targets, array &sources)
 // K(x, y) = (1 + r^2)
 array quadricKernel(array &i, array &j, array &targets, array &sources)
 {   
-    array r           = targets(i) - (sources.T())(j);
-    array interaction = 1 + r * r;
+    array r, r_squared, interaction;
+    
+    if(target.dims(0) == target.elements())
+    {
+        r           = targets(i) - (sources.T())(j)
+        interaction = (1 + r * r);
+    }
 
+    else if(target.dims(1) == 2)
+    {
+        computeRSquared2D(i, j, targets, sources, r_squared);
+        interaction = (1 + r_squared);
+    }
+
+    else // assuming dim = 3
+    {
+        computeRSquared3D(i, j, targets, sources, r_squared);
+        interaction = (1 + r_squared);
+    }
+ 
     interaction.eval();
     return interaction;
 }
@@ -88,8 +123,25 @@ array quadricKernel(array &i, array &j, array &targets, array &sources)
 // K(x, y) = exp(-r^2)
 array gaussianKernel(array &i, array &j, array &targets, array &sources)
 {
-    array r           = targets(i) - (sources.T())(j);
-    array interaction = af::exp(-r * r);
+    array r, r_squared, interaction;
+    
+    if(target.dims(0) == target.elements())
+    {
+        r           = targets(i) - (sources.T())(j)
+        interaction = af::exp(-r * r);
+    }
+
+    else if(target.dims(1) == 2)
+    {
+        computeRSquared2D(i, j, targets, sources, r_squared);
+        interaction = af::exp(-r_squared);
+    }
+
+    else // assuming dim = 3
+    {
+        computeRSquared3D(i, j, targets, sources, r_squared);
+        interaction = af::exp(-r_squared);
+    }
 
     interaction.eval();
     return interaction;    
