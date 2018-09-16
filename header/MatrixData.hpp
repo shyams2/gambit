@@ -138,7 +138,7 @@ public:
 
     // Determine the kernel type:
     bool isTranslationInvariant();
-    bool isHomogenous();
+    bool isHomogeneous();
     bool isLogHomogeneous();
     double getDegreeOfHomogeneity();
 };
@@ -497,7 +497,7 @@ bool MatrixData::isTranslationInvariant()
         return false;
 }
 
-bool MatrixData::isHomogenous()
+bool MatrixData::isHomogeneous()
 {
     array x = af::randu(10, MatrixData::getDimensionality(), f64);
     array y = af::randu(10, MatrixData::getDimensionality(), f64);
@@ -510,28 +510,24 @@ bool MatrixData::isHomogenous()
     af::gforSet(false);
 
     double scale_1 = (double) rand() / RAND_MAX;
-
     af::gforSet(true);
-    array res_scale_1 = this->matrixEntriesAF(af::range(10, 1, 1, 1, -1, u32),
-                                              af::range(10, 1, 1, 1, -1, u32),
+    array res_scale_1 = this->matrixEntriesAF(af::range(10),
+                                              af::range(10),
                                               x * scale_1, y * scale_1
                                              );
     af::gforSet(false);
-
     // Change of base: log_a x / log_a b = log_b x
     // We want to get log_{scale} (res_scaled / res) = alpha if kernel is homogeneous
-    double alpha_1  = af::log(res_scale_1 / res) / af::log(scale_1)
+    double alpha_1 = log(af::mean<double>(res_scale_1 / res)) / log(scale_1);
 
     double scale_2 = (double) rand() / RAND_MAX;
-
     af::gforSet(true);
-    array res_scale_2 = this->matrixEntriesAF(af::range(10, 1, 1, 1, -1, u32),
-                                              af::range(10, 1, 1, 1, -1, u32),
+    array res_scale_2 = this->matrixEntriesAF(af::range(10),
+                                              af::range(10),
                                               x * scale_2, y * scale_2
                                              );
     af::gforSet(false);
-
-    double alpha_2  = af::log(res_scale_2 / res) / af::log(scale_2)
+    double alpha_2 = log(af::mean<double>(res_scale_2 / res)) / log(scale_2);
 
     // Now if the kernel is indeed homogeneous, alpha_1 and alpha_2 MUST match:
     if(fabs(alpha_1 - alpha_2)< 1e-14)
@@ -541,5 +537,84 @@ bool MatrixData::isHomogenous()
         return false;
 }
 
+bool MatrixData::isLogHomogeneous()
+{
+    array x = af::randu(10, MatrixData::getDimensionality(), f64);
+    array y = af::randu(10, MatrixData::getDimensionality(), f64);
+
+    af::gforSet(true);
+    array res = this->matrixEntriesAF(af::range(10),
+                                      af::range(10),
+                                      x, y
+                                     );
+    af::gforSet(false);
+
+    double scale_1 = (double) rand() / RAND_MAX;
+    af::gforSet(true);
+    array res_scale_1 = this->matrixEntriesAF(af::range(10),
+                                              af::range(10),
+                                              x * scale_1, y * scale_1
+                                             );
+    af::gforSet(false);
+    // Change of base: log_a x / log_a b = log_b x
+    // We want to get log_{scale} (res_scaled / res) = alpha if kernel is homogeneous
+    double alpha_1 = af::mean<double>(res_scale_1 - res) / log(scale_1);
+
+    double scale_2 = (double) rand() / RAND_MAX;
+    af::gforSet(true);
+    array res_scale_2 = this->matrixEntriesAF(af::range(10),
+                                              af::range(10),
+                                              x * scale_2, y * scale_2
+                                             );
+    af::gforSet(false);
+    double alpha_2 = af::mean<double>(res_scale_2 - res) / log(scale_2);
+
+    // Now if the kernel is indeed log homogeneous, alpha_1 and alpha_2 MUST match:
+    if(fabs(alpha_1 - alpha_2)< 1e-14)
+        return true;
+
+    else
+        return false;
+}
+
+double MatrixData::getDegreeOfHomogeneity()
+{
+    array x = af::randu(10, MatrixData::getDimensionality(), f64);
+    array y = af::randu(10, MatrixData::getDimensionality(), f64);
+
+    af::gforSet(true);
+    array res = this->matrixEntriesAF(af::range(10),
+                                      af::range(10),
+                                      x, y
+                                     );
+    af::gforSet(false);
+
+    double scale = (double) rand() / RAND_MAX;
+    af::gforSet(true);
+    array res_scale = this->matrixEntriesAF(af::range(10),
+                                            af::range(10),
+                                            x * scale, y * scale
+                                           );
+    af::gforSet(false);
+
+    double alpha;
+    if(MatrixData::isHomogeneous())
+    {
+        alpha = log(af::mean<double>(res_scale / res)) / log(scale);
+    }
+
+    else if(MatrixData::isLogHomogeneous())
+    {
+        alpha = af::mean<double>(res_scale - res) / log(scale);
+    }
+
+    else
+    {
+        cout << "Neither homogeneous nor log-homogeneous!!" << endl;
+        exit(1);
+    }
+
+    return alpha;
+}
 
 #endif
