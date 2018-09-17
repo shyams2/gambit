@@ -23,14 +23,14 @@ private:
     array standard_nodes;     // Gets the points in 2D
     std::string nodes_type;   // Whether Chebyshev, or Legendre or Equispaced
 
-    std::array<af::array, 4> standard_nodes_child; 
-    std::array<af::array, 8> neighbor_interaction;
-    std::array<af::array, 4> L2L;
-    std::array<af::array, 4> M2M;
-    std::array<af::array, 16> M2L_inner;
-    std::array<af::array, 24> M2L_outer;
-    array self_interaction;
-    std::vector<std::vector<FMM2DBox>> tree; // The tree storing all the information.
+    std::array<af::array, 4> standard_nodes_child; // Nodes of the child given that parent has standard nodes in [-1, 1]
+    std::array<af::array, 8> neighbor_interaction; // Interaction operator for the eight cells that surround cell of concern
+    std::array<af::array, 4> L2L;                  // L2L operators from the parent to the four children
+    std::array<af::array, 4> M2M;                  // M2M operators from the children to the parent
+    std::array<af::array, 16> M2L_inner;           // M2L operators from the inner well separated clusters
+    std::array<af::array, 24> M2L_outer;           // M2L operators from the outer well separated clusters
+    array self_interaction;                        // Operator for self interaction
+    std::vector<std::vector<FMM2DBox>> tree;       // The tree storing all the information.
 
 public:
     // Constructor for the class
@@ -68,6 +68,8 @@ public:
     void evaluateAllM2L();
     // Performs the L2L using a downwardsweep:
     void downwardTraversal();
+    // Performs the leaf level interactions:
+    void evaluateLeafLevelInteractions();
 };
 
 void FMM2DTree::printBoxDetails(unsigned N_level, unsigned N_box)
@@ -165,6 +167,7 @@ FMM2DTree::FMM2DTree(MatrixData &M, unsigned N_nodes, std::string nodes_type, co
     cout << "Assigning Relations Amongst Boxes in the tree..." << endl;
     FMM2DTree::assignTreeRelations();
     cout << "Getting M2L and neighbor interactions" << endl;
+    FMM2DTree::getM2LInteractions();
 }
 
 void FMM2DTree::getTransferMatrices()
@@ -174,42 +177,21 @@ void FMM2DTree::getTransferMatrices()
     L2L_array = array(N_nodes * N_nodes, N_nodes * N_nodes, f64);
     
     // For child0:
-    nodes_x = (this->standard_nodes_child[0])(af::span, 0);
-    nodes_y = (this->standard_nodes_child[0])(af::span, 1);
-
-    getL2L2D(nodes_x, nodes_y, this->standard_nodes_1d, L2L_array);
-    L2L_array.eval();
-    this->L2L[0] = L2L_array;
-    af_print(L2L_array)
-
-    // For child1:
-    nodes_x = (this->standard_nodes_child[1])(af::span, 0);
-    nodes_y = (this->standard_nodes_child[1])(af::span, 1);
-
-    getL2L2D(nodes_x, nodes_y, this->standard_nodes_1d, L2L_array);
-    L2L_array.eval();
-    this->L2L[1] = L2L_array;
-
-    // For child2:
-    nodes_x = (this->standard_nodes_child[2])(af::span, 0);
-    nodes_y = (this->standard_nodes_child[2])(af::span, 1);
-
-    getL2L2D(nodes_x, nodes_y, this->standard_nodes_1d, L2L_array);
-    L2L_array.eval();
-    this->L2L[2] = L2L_array;
-
-    // For child3:
-    nodes_x = (this->standard_nodes_child[3])(af::span, 0);
-    nodes_y = (this->standard_nodes_child[3])(af::span, 1);
-
-    getL2L2D(nodes_x, nodes_y, this->standard_nodes_1d, L2L_array);
-    L2L_array.eval();
-    this->L2L[3] = L2L_array;
-
-    for(unsigned i = 0; i < 4; i++)
+    for(unsigned short N_child = 0; N < 4; N_child++)
     {
-        this->M2M[i] = this->L2L[i].T();
-        this->M2M[i].eval();
+        nodes_x = (this->standard_nodes_child[N_child])(af::span, 0);
+        nodes_y = (this->standard_nodes_child[N_child])(af::span, 1);
+
+        getL2L2D(nodes_x, nodes_y, this->standard_nodes_1d, L2L_array);
+        L2L_array.eval();
+        this->L2L[N_child] = L2L_array;
+    }
+
+    // M2M is going to be the transpose of the L2L operators:
+    for(unsigned short N_child = 0; N < 4; N_child++)
+    {
+        this->M2M[N_child] = this->L2L[N_child].T();
+        this->M2M[N_child].eval();
     }
 }
 
@@ -253,6 +235,7 @@ void FMM2DTree::buildTree()
     {
         this->max_levels++;
         std::vector<FMM2DBox> level;
+        
         level.reserve(pow(4, this->max_levels));
         unsigned N_leaf_criterion = 0; // number of cells that satisfy leaf criterion
         for(unsigned i = 0; i < (unsigned) pow(4, this->max_levels); i++) 
@@ -317,13 +300,18 @@ void FMM2DTree::assignTreeRelations()
     {
         // Says Invalid control predicate??
         // #pragma omp parallel for
-        for(unsigned N_box = 0; N_box < pow(4, N_level); N_box++) 
-        {
-            assignChild0Relations(N_level, N_box);
-            assignChild1Relations(N_level, N_box);
-            assignChild2Relations(N_level, N_box);
-            assignChild3Relations(N_level, N_box);
-        }
+        FMM2DTree::assignLevelRelations(N_level);
+    }
+}
+
+FMM2DTree::assignLevelRelations(int N_level)
+{
+    for(int N_box = 0; N_box < pow(4, N_level); N_box++) 
+    {
+        assignChild0Relations(N_level, N_box);
+        assignChild1Relations(N_level, N_box);
+        assignChild2Relations(N_level, N_box);
+        assignChild3Relations(N_level, N_box);
     }
 }
 
@@ -1025,6 +1013,32 @@ void FMM2DTree::downwardTraversal()
             tree[N_lc][N_bc2].locals += L2L[2] * tree[N_level][N_box].locals;
             tree[N_lc][N_bc3].locals += L2L[3] * tree[N_level][N_box].locals;
         }
+    }
+}
+
+void FMM2DTree::evaluateLeafLevelInteractions() 
+{
+    if(this->max_levels < 2) 
+    {
+        for(unsigned N_box = 0; N_box < pow(4, this->max_levels); N_box++) 
+        {
+            tree[this->max_levels][N_box].locals = af::constant(0, rank, f64);
+        }
+    }
+    
+    for(unsigned N_box = 0; N_box < pow(4, this->max_levels); N_box++) 
+    {
+        for(int i = 0; i < 8; i++) 
+        {
+            int N_neighbor = tree[this->max_levels][N_box].neighbor[i];
+            if(N_neighbor > -1) 
+            {
+                tree[this->max_levels][i].locals +=   this->neighbor_interaction[i]
+                                                    * tree[this->max_levels][N_neighbor].multipoles;
+            }
+        }
+
+        tree[this->max_levels][N_box].locals += self_interaction * tree[this->max_levels][N_box].multipoles;
     }
 }
 
