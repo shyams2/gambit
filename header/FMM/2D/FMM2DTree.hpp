@@ -18,18 +18,27 @@ private:
     unsigned rank;           // Rank of the low-rank interaction
     unsigned max_levels;     // Number of levels in the tree.
                        
-    const array *charges_ptr; // Holds the information for the charges of the points
-    array standard_nodes_1d;  // Standard nodes alloted as given by user choice in [-1, 1]
-    array standard_nodes;     // Gets the points in 2D
-    std::string nodes_type;   // Whether Chebyshev, or Legendre or Equispaced
+    const array *charges_ptr;  // Holds the information for the charges of the points
+    array standard_nodes_1d;   // Standard nodes alloted as given by user choice in [-1, 1]
+    array standard_nodes;      // Gets the points in 2D
+    std::string nodes_type;    // Whether Chebyshev, or Legendre or Equispaced
+
+    double c_x, c_y, r_x, r_y; // Radii and the center coordinates for the domain
+    // Flags which determine structure for the underlying kernel:
+    bool is_homogeneous, is_log_homogeneous, is_translation_invariant;
+
+    std::vector<size_t> number_of_boxes; // Number of boxes at each level
+    // The following functions will only be used if the function is homog / loghomog
+    std::vector<double> box_radius;
+    std::vector<double> box_log_homog_radius;
+    std::vector<double> box_homog_radius;
+    double alpha; // degree of homog
 
     std::array<af::array, 4> standard_nodes_child; // Nodes of the child given that parent has standard nodes in [-1, 1]
-    std::array<af::array, 8> neighbor_interaction; // Interaction operator for the eight cells that surround cell of concern
-    std::array<af::array, 4> L2L;                  // L2L operators from the parent to the four children
-    std::array<af::array, 4> M2M;                  // M2M operators from the children to the parent
+    std::vector<af::array> L2L;                    // L2L operators from the parent to the four children
+    std::vector<af::array> M2M;                    // M2M operators from the children to the parent
     std::array<af::array, 16> M2L_inner;           // M2L operators from the inner well separated clusters
     std::array<af::array, 24> M2L_outer;           // M2L operators from the outer well separated clusters
-    array self_interaction;                        // Operator for self interaction
     std::vector<std::vector<FMM2DBox>> tree;       // The tree storing all the information.
 
 public:
@@ -58,8 +67,6 @@ public:
     void getTransferMatrices();
     // Getting M2L operators:
     void getM2LInteractions();
-    // Getting leaf level operators(neighbor and self interactions):
-    void getLeafLevelInteractions();
     // Gets the charges at the leaf level:
     void assignLeafCharges();
     // Computes the multipoles for all the boxes using upward sweep:
@@ -158,6 +165,31 @@ FMM2DTree::FMM2DTree(MatrixData &M, unsigned N_nodes, std::string nodes_type, co
     child_nodes.eval();
     this->standard_nodes_child[3] = child_nodes;
 
+    // Finding out the radius and center for the domain of consideration:
+    determineCenterAndRadius((*(this->M_ptr->getSourceCoordsPtr()))(af::span, 0), this->c_x, this->r_x);
+    determineCenterAndRadius((*(this->M_ptr->getSourceCoordsPtr()))(af::span, 1), this->c_y, this->r_y);
+
+    // Determining nature of the underlying problem:
+    this->is_translation_invariant = this->M_ptr->isTranslationInvariant();
+    // Checking that the radius of r_x and r_y are approximately the same:
+    // TODO: Need to see if this is a good enough treshold:
+    if(2 * fabs(this->r_x - this->r_y) / (this->r_x + this->r_y) < 1e-3)
+    {
+        this->is_homogeneous     = this->M_ptr->isHomogeneous();
+        this->is_log_homogeneous = this->M_ptr->isLogHomogeneous();
+        
+        if(this->is_homogeneous || this->is_log_homogeneous)
+        {
+            this->alpha = this->M_ptr->getDegreeOfHomog();
+        } 
+    }
+
+    else
+    {
+        this->is_homogeneous     = false;
+        this->is_log_homogeneous = false;
+    }
+
     // Getting Transfer Matrices(that is M2M and L2L):
     cout << "Getting Transfer Matrices..." << endl;
     FMM2DTree::getTransferMatrices();
@@ -168,6 +200,10 @@ FMM2DTree::FMM2DTree(MatrixData &M, unsigned N_nodes, std::string nodes_type, co
     FMM2DTree::assignTreeRelations();
     cout << "Getting M2L and neighbor interactions" << endl;
     FMM2DTree::getM2LInteractions();
+    cout << "Getting the charges at the nodes of the leaf level" << endl;
+    FMM2DTree::assignLeafCharges();
+    cout << "Performing upward sweep to get charges" << endl;
+    FMM2DTree::upwardTraveral();
 }
 
 void FMM2DTree::getTransferMatrices()
@@ -175,8 +211,11 @@ void FMM2DTree::getTransferMatrices()
     array nodes_x, nodes_y, L2L_array;
     // Initializing L2L array
     L2L_array = array(N_nodes * N_nodes, N_nodes * N_nodes, f64);
-    
-    // For child0:
+
+    // Reserving space on the vector:
+    // this->L2L.reserve(4);
+    // this->M2M.reserve(4);
+
     for(unsigned short N_child = 0; N < 4; N_child++)
     {
         nodes_x = (this->standard_nodes_child[N_child])(af::span, 0);
@@ -184,8 +223,11 @@ void FMM2DTree::getTransferMatrices()
 
         getL2L2D(nodes_x, nodes_y, this->standard_nodes_1d, L2L_array);
         L2L_array.eval();
-        this->L2L[N_child] = L2L_array;
+        this->L2L.push_back(L2L_array);
     }
+
+    cout << "Type for nodes" << endl;
+    cout << this->L2L[0].type() << endl;
 
     // M2M is going to be the transpose of the L2L operators:
     for(unsigned short N_child = 0; N < 4; N_child++)
@@ -220,23 +262,45 @@ void FMM2DTree::buildTree()
     // Since the root level would consist of all the boxes:
     root.inds_in_box = af::range(this->M_ptr->getNumCols(), 1, 1, 1, -1, u32);
 
-    // Finding the radius and the centers for root:
-    determineCenterAndRadius((*(this->M_ptr->getSourceCoordsPtr()))(af::span, 0), root.c_x, root.r_x);
-    determineCenterAndRadius((*(this->M_ptr->getSourceCoordsPtr()))(af::span, 1), root.c_y, root.r_y);
+    // Assigning the radius and the centers for root:
+    root.c_x = this->c_x;
+    root.c_y = this->c_y;
+    root.r_x = this->r_x;
+    root.r_y = this->r_y;
 
     // Pushing back the data onto the tree variable:
     std::vector<FMM2DBox> root_level;
     root_level.push_back(root);
     tree.push_back(root_level);
 
+    // Pushing for the root level:
+    this->number_of_boxes.push_back(1);
+    if(this->is_homogeneous || this->is_log_homogeneous)
+    {
+        this->box_radius.push_back(root.r_x);
+        this->box_homog_radius.push_back(pow(root.r_x, this->alpha));
+        this->box_log_homog_radius.push_back(this->alpha * log(root.r_x));
+    }
+
     // Using this flag to check whether we have reached leaf level:
     bool reached_leaf = false;
     while(!reached_leaf)
     {
         this->max_levels++;
+        this->number_of_boxes.push_back(4 * this->number_of_boxes[this->max_levels - 1]);
+        
+        if(this->is_homogeneous || this->is_log_homogeneous)
+        {
+            this->box_radius.push_back(0.5 * this->box_radius[this->max_levels - 1]);
+            this->box_homog_radius.push_back(pow(0.5, this->alpha) * this->box_homog_radius[this->max_levels - 1]);
+            this->box_log_homog_radius.push_back(  this->box_log_homog_radius[this->max_levels - 1]
+                                                 - this->alpha * log(2)
+                                                );
+        }
+
         std::vector<FMM2DBox> level;
         
-        level.reserve(pow(4, this->max_levels));
+        level.reserve(this->number_of_boxes[this->max_levels]);
         unsigned N_leaf_criterion = 0; // number of cells that satisfy leaf criterion
         for(unsigned i = 0; i < (unsigned) pow(4, this->max_levels); i++) 
         {
@@ -287,7 +351,7 @@ void FMM2DTree::buildTree()
 
         tree.push_back(level);
         // If all the cells in the level have N < 4 * rank:
-        if(N_leaf_criterion == pow(4, this->max_levels))
+        if(N_leaf_criterion == this->number_of_boxes[this->max_levels])
             reached_leaf = true;
     }
 }
@@ -298,20 +362,14 @@ void FMM2DTree::assignTreeRelations()
     // DO NOT USE OPENMP HERE!!!
     for(unsigned N_level = 0; N_level < this->max_levels; N_level++) 
     {
-        // Says Invalid control predicate??
-        // #pragma omp parallel for
-        FMM2DTree::assignLevelRelations(N_level);
-    }
-}
-
-FMM2DTree::assignLevelRelations(int N_level)
-{
-    for(int N_box = 0; N_box < pow(4, N_level); N_box++) 
-    {
-        assignChild0Relations(N_level, N_box);
-        assignChild1Relations(N_level, N_box);
-        assignChild2Relations(N_level, N_box);
-        assignChild3Relations(N_level, N_box);
+        #pragma omp parallel for
+        for(int N_box = 0; N_box < this->number_of_boxes[N_level]; N_box++) 
+        {
+            assignChild0Relations(N_level, N_box);
+            assignChild1Relations(N_level, N_box);
+            assignChild2Relations(N_level, N_box);
+            assignChild3Relations(N_level, N_box);
+        }
     }
 }
 
@@ -706,7 +764,8 @@ void FMM2DTree::getM2LInteractions()
 {
     array M2L, nodes;
 
-    // Getting outer interactions:
+    // ============= Getting outer interations ============================
+    // Getting interaction between boxes on the lower edge:
     for(unsigned i = 0; i < 6; i++)
     {
         nodes= af::join(1, this->standard_nodes(af::span, 0) + 2 * (i - 3),
@@ -718,6 +777,7 @@ void FMM2DTree::getM2LInteractions()
         this->M2L_outer[i] = M2L;
     }
 
+    // Getting interaction between boxes on the right edge:
     for(unsigned i = 0; i < 6; i++)
     {
         nodes= af::join(1, this->standard_nodes(af::span, 0) + 6,
@@ -729,6 +789,7 @@ void FMM2DTree::getM2LInteractions()
         this->M2L_outer[i + 6] = M2L;
     }
 
+    // Getting interaction between boxes on the top edge:
     for(unsigned i = 0; i < 6; i++)
     {
         nodes= af::join(1, this->standard_nodes(af::span, 0) + 2 * (3 - i),
@@ -740,6 +801,7 @@ void FMM2DTree::getM2LInteractions()
         this->M2L_outer[i + 12] = M2L;
     }
 
+    // Getting interaction between boxes on the left edge:
     for(unsigned i = 0; i < 6; i++)
     {
         nodes= af::join(1, this->standard_nodes(af::span, 0) - 6,
@@ -751,7 +813,10 @@ void FMM2DTree::getM2LInteractions()
         this->M2L_outer[i + 18] = M2L;
     }
 
-    // Getting inner interactions:
+    // ====================================================================
+
+    // ============= Getting inner interations ============================
+    // Getting interaction between boxes on the lower edge:
     for(unsigned i = 0; i < 4; i++)
     {
         nodes= af::join(1, this->standard_nodes(af::span, 0) + 2 * (i - 2),
@@ -763,6 +828,7 @@ void FMM2DTree::getM2LInteractions()
         this->M2L_inner[i] = M2L;
     }
 
+    // Getting interaction between boxes on the right edge:
     for(unsigned i = 0; i < 4; i++)
     {
         nodes= af::join(1, this->standard_nodes(af::span, 0) + 4,
@@ -774,6 +840,7 @@ void FMM2DTree::getM2LInteractions()
         this->M2L_inner[i + 4] = M2L;
     }
 
+    // Getting interaction between boxes on the top edge:
     for(unsigned i = 0; i < 4; i++)
     {
         nodes= af::join(1, this->standard_nodes(af::span, 0) + 2 * (2 - i),
@@ -785,6 +852,7 @@ void FMM2DTree::getM2LInteractions()
         this->M2L_inner[i + 8] = M2L;
     }
 
+    // Getting interaction between boxes on the left edge:
     for(unsigned i = 0; i < 4; i++)
     {
         nodes= af::join(1, this->standard_nodes(af::span, 0) - 4,
@@ -797,75 +865,13 @@ void FMM2DTree::getM2LInteractions()
     }
 }
 
-void FMM2DTree::getLeafLevelInteractions()
-{
-    array M2L, nodes, leaf_nodes;
-    
-    // Get neighbor interactions:
-    double r_x_leaf = this->tree[this->max_levels][0].r_x; // since its a uniform tree, 
-                                                           // we don't bother about the box considered
-    double r_y_leaf = this->tree[this->max_levels][0].r_y;
-
-    leaf_nodes = af::join(1, this->standard_nodes(af::span, 0) * r_x_leaf,
-                          this->standard_nodes(af::span, 1) * r_y_leaf
-                         );
-
-    for(unsigned i = 0; i < 2; i++)
-    {
-        nodes= af::join(1, (this->standard_nodes(af::span, 0) + 2 * (i - 1)) * r_x_leaf,
-                        (this->standard_nodes(af::span, 1) - 2) * r_y_leaf
-                       );
-
-        getM2L(leaf_nodes, nodes, *(this->M_ptr), M2L);
-        M2L.eval();
-        this->neighbor_interaction[i] = M2L;
-    }
-
-    for(unsigned i = 0; i < 2; i++)
-    {
-        nodes= af::join(1, (this->standard_nodes(af::span, 0) + 2) * r_x_leaf,
-                        (this->standard_nodes(af::span, 1) + 2 * (i - 1)) * r_y_leaf
-                       );
-        getM2L(leaf_nodes, nodes, *(this->M_ptr), M2L);
-        M2L.eval();
-        this->neighbor_interaction[i + 2] = M2L;
-    }
-
-
-    for(unsigned i = 0; i < 2; i++)
-    {
-        nodes= af::join(1, (this->standard_nodes(af::span, 0) + 2 * (1 - i)) * r_x_leaf,
-                        (this->standard_nodes(af::span, 1) + 2) * r_y_leaf
-                       );
-
-        getM2L(this->standard_nodes, nodes, *(this->M_ptr), M2L);
-        M2L.eval();
-        this->neighbor_interaction[i + 4] = M2L;
-    }
-
-    for(unsigned i = 0; i < 2; i++)
-    {
-        nodes= af::join(1, (this->standard_nodes(af::span, 0) - 2) * r_x_leaf,
-                        (this->standard_nodes(af::span, 1) + 2 * (1 - i)) * r_y_leaf
-                       );
-
-        getM2L(this->standard_nodes, nodes, *(this->M_ptr), M2L);
-        M2L.eval();
-        this->neighbor_interaction[i + 6] = M2L;
-    }
-
-    // Getting self-interaction:
-    getM2L(leaf_nodes, leaf_nodes, *(this->M_ptr), this->self_interaction);
-    this->self_interaction.eval();
-}
-
 void FMM2DTree::assignLeafCharges()
 {
     // Looping over the boxes at the leaf level:
-    for(unsigned i = 0; i < pow(4, this->max_levels), i++)
+    for(unsigned i = 0; i < this->number_of_boxes[this->max_levels]; i++)
     {   
         // Getting the box that is in consideration:
-        FMM2DBox &node = this->tree[this->max_levels][i]
+        FMM2DBox &node = this->tree[this->max_levels][i];
 
         array std_locations_x, std_locations_y;
         // Mapping onto the standard interval of [-1, 1]:
@@ -878,10 +884,10 @@ void FMM2DTree::assignLeafCharges()
                    );
 
         // Getting the P2M operator:
-        P2M_array = array(node.inds_in_box.elements(), N_nodes * N_nodes, f64);
+        array P2M_array = array(node.inds_in_box.elements(), N_nodes * N_nodes, f64);
         getL2L2D(std_locations_x, std_locations_y, this->standard_nodes_1d, P2M_array);
-        tree[this->max_levels][i].multipoles = af::matmul(P2M_array.T(), charges(node.inds_in_box));
-        tree[this->max_levels][i].multipoles.eval();
+        tree[this->max_levels][i].node_charges = af::matmul(P2M_array.T(), (*this->charges_ptr)(node.inds_in_box));
+        tree[this->max_levels][i].node_charges.eval();
     }
 }
 
@@ -894,7 +900,7 @@ void FMM2DTree::upwardTraveral()
         int N_lc = N_level + 1;
 
         int N_bc0, N_bc1, N_bc2, N_bc3;
-        for(unsigned N_box = 0; N_box < pow(4, N_level); N_box++) 
+        for(unsigned N_box = 0; N_box < this->number_of_boxes[N_level]; N_box++) 
         {
             // Box number for child0:
             N_bc0 = 4 * N_box;
@@ -905,141 +911,144 @@ void FMM2DTree::upwardTraveral()
             // Box number for child3:
             N_bc3 = 4 * N_box + 3;
 
-            tree[N_level][N_box].multipoles =  M2M[0] * tree[N_lc][N_bc0].multipoles
-                                             + M2M[1] * tree[N_lc][N_bc1].multipoles
-                                             + M2M[2] * tree[N_lc][N_bc2].multipoles
-                                             + M2M[3] * tree[N_lc][N_bc3].multipoles
+            cout << this->M2M[0].type() << endl;
+            cout << tree[N_lc][N_bc0].node_charges.type() << endl;
+
+            tree[N_level][N_box].node_charges =  af::matmul(this->M2M[0], tree[N_lc][N_bc0].node_charges)
+                                               + af::matmul(this->M2M[1], tree[N_lc][N_bc1].node_charges)
+                                               + af::matmul(this->M2M[2], tree[N_lc][N_bc2].node_charges)
+                                               + af::matmul(this->M2M[3], tree[N_lc][N_bc3].node_charges);
         }
     }
 }
 
-void FMM2DTree::evaluateAllM2L()
-{
-    for(int N_level = 2; N_level <= this->max_levels; N_level++) 
-    {
-        for(unsigned N_box = 0; N_box < pow(4, N_level); N_box++)
-        {
-            // Getting the box in consideration:
-            FMM2DBox &box = this->tree[N_level][N_box];
-            // Initializing the value for the locals:
-            box.locals = af::constant(0, this->rank, f64);
+// void FMM2DTree::evaluateAllM2L()
+// {
+//     for(int N_level = 2; N_level <= this->max_levels; N_level++) 
+//     {
+//         for(unsigned N_box = 0; N_box < pow(4, N_level); N_box++)
+//         {
+//             // Getting the box in consideration:
+//             FMM2DBox &box = this->tree[N_level][N_box];
+//             // Initializing the value for the locals:
+//             box.locals = af::constant(0, this->rank, f64);
 
-            if(this->is_homogeneous = true)
-            {
-                // Inner well-separated clusters
-                for(unsigned short i = 0; i < 16; i++) 
-                {
-                    int N_inner = box.inner[i];
-                    if(N_inner > -1) 
-                    {
-                        box.locals += this->M2L_inner[i] * this->tree[N_level][N_inner].multipoles;
-                    }
-                }
+//             if(this->is_homogeneous = true)
+//             {
+//                 // Inner well-separated clusters
+//                 for(unsigned short i = 0; i < 16; i++) 
+//                 {
+//                     int N_inner = box.inner[i];
+//                     if(N_inner > -1) 
+//                     {
+//                         box.locals += this->M2L_inner[i] * this->tree[N_level][N_inner].multipoles;
+//                     }
+//                 }
 
-                // Outer well-separated clusters
-                for(unsigned short i = 0; i < 24; i++) 
-                {
-                    int N_outer = box.outer[i];
-                    if(N_outer > -1) 
-                    {
-                        box.locals += this->M2L_outer[i] * this->tree[N_level][N_outer].multipoles;
-                    }
-                }
+//                 // Outer well-separated clusters
+//                 for(unsigned short i = 0; i < 24; i++) 
+//                 {
+//                     int N_outer = box.outer[i];
+//                     if(N_outer > -1) 
+//                     {
+//                         box.locals += this->M2L_outer[i] * this->tree[N_level][N_outer].multipoles;
+//                     }
+//                 }
 
-            // Applying the scaling factor to account for level:
-            box.locals *= this->box_homog_radius[N_level];                   
-            }
+//             // Applying the scaling factor to account for level:
+//             box.locals *= this->box_homog_radius[N_level];                   
+//             }
 
-            else if(this->is_log_homogeneous = true)
-            {
-                // Inner well-separated clusters
-                for(unsigned short i = 0; i < 16; i++) 
-                {
-                    int N_inner = box.inner[i];
-                    if(N_inner > -1) 
-                    {
-                        box.locals += this->M2L_inner[i] * this->tree[N_level][N_inner].multipoles;
-                        // Here the scaling factor to account for level shows up as an addition operator:
-                        box.locals +=   this->box_log_homog_radius[N_level]
-                                      * af::tile(af::sum(this->tree[N_level][N_inner].multipoles), this->rank);
-                    }
-                }
+//             else if(this->is_log_homogeneous = true)
+//             {
+//                 // Inner well-separated clusters
+//                 for(unsigned short i = 0; i < 16; i++) 
+//                 {
+//                     int N_inner = box.inner[i];
+//                     if(N_inner > -1) 
+//                     {
+//                         box.locals += this->M2L_inner[i] * this->tree[N_level][N_inner].multipoles;
+//                         // Here the scaling factor to account for level shows up as an addition operator:
+//                         box.locals +=   this->box_log_homog_radius[N_level]
+//                                       * af::tile(af::sum(this->tree[N_level][N_inner].multipoles), this->rank);
+//                     }
+//                 }
 
-                //  Outer well-separated clusters
-                for(unsigned short i = 0; i < 24; i++) 
-                {
-                    int N_outer = box.outer[i];
-                    if(N_outer > -1) 
-                    {
-                        box.locals += this->M2L_outer[i] * this->tree[N_level][N_outer].multipoles;
-                        // Here the scaling factor to account for level shows up as an addition operator:
-                        box.locals +=   this->box_log_homog_radius[N_level]
-                                      * af::tile(af::sum(this->tree[N_level][N_inner].multipoles), this->rank);
+//                 //  Outer well-separated clusters
+//                 for(unsigned short i = 0; i < 24; i++) 
+//                 {
+//                     int N_outer = box.outer[i];
+//                     if(N_outer > -1) 
+//                     {
+//                         box.locals += this->M2L_outer[i] * this->tree[N_level][N_outer].multipoles;
+//                         // Here the scaling factor to account for level shows up as an addition operator:
+//                         box.locals +=   this->box_log_homog_radius[N_level]
+//                                       * af::tile(af::sum(this->tree[N_level][N_inner].multipoles), this->rank);
 
-                    }
-                }
-            }
+//                     }
+//                 }
+//             }
 
-            else
-            {
-                cout << "Feature still in progress!!" << endl;
-                exit(1);
-            }
-        }
-    }
-}
+//             else
+//             {
+//                 cout << "Feature still in progress!!" << endl;
+//                 exit(1);
+//             }
+//         }
+//     }
+// }
 
-void FMM2DTree::downwardTraversal()
-{
-    for(int N_level = 2; N_level < pow(4, this->max_levels); N_level++) 
-    {
-        // Level number for the child:
-        int N_lc = N_level + 1;
-        int N_bc0, N_bc1, N_bc2, N_bc3;
+// void FMM2DTree::downwardTraversal()
+// {
+//     for(int N_level = 2; N_level < pow(4, this->max_levels); N_level++) 
+//     {
+//         // Level number for the child:
+//         int N_lc = N_level + 1;
+//         int N_bc0, N_bc1, N_bc2, N_bc3;
         
-        for(unsigned N_box = 0; N_box < pow(4, N_level); N_box++) 
-        {
-            // Box number for child0:
-            N_bc0 = 4 * N_box;
-            // Box number for child1:
-            N_bc1 = 4 * N_box + 1;
-            // Box number for child2:
-            N_bc2 = 4 * N_box + 2;
-            // Box number for child3:
-            N_bc3 = 4 * N_box + 3;
+//         for(unsigned N_box = 0; N_box < pow(4, N_level); N_box++) 
+//         {
+//             // Box number for child0:
+//             N_bc0 = 4 * N_box;
+//             // Box number for child1:
+//             N_bc1 = 4 * N_box + 1;
+//             // Box number for child2:
+//             N_bc2 = 4 * N_box + 2;
+//             // Box number for child3:
+//             N_bc3 = 4 * N_box + 3;
 
-            tree[N_lc][N_bc3].locals += L2L[0] * tree[N_level][N_box].locals;
-            tree[N_lc][N_bc2].locals += L2L[1] * tree[N_level][N_box].locals;
-            tree[N_lc][N_bc2].locals += L2L[2] * tree[N_level][N_box].locals;
-            tree[N_lc][N_bc3].locals += L2L[3] * tree[N_level][N_box].locals;
-        }
-    }
-}
+//             tree[N_lc][N_bc3].locals += L2L[0] * tree[N_level][N_box].locals;
+//             tree[N_lc][N_bc2].locals += L2L[1] * tree[N_level][N_box].locals;
+//             tree[N_lc][N_bc2].locals += L2L[2] * tree[N_level][N_box].locals;
+//             tree[N_lc][N_bc3].locals += L2L[3] * tree[N_level][N_box].locals;
+//         }
+//     }
+// }
 
-void FMM2DTree::evaluateLeafLevelInteractions() 
-{
-    if(this->max_levels < 2) 
-    {
-        for(unsigned N_box = 0; N_box < pow(4, this->max_levels); N_box++) 
-        {
-            tree[this->max_levels][N_box].locals = af::constant(0, rank, f64);
-        }
-    }
+// void FMM2DTree::evaluateLeafLevelInteractions() 
+// {
+//     if(this->max_levels < 2) 
+//     {
+//         for(unsigned N_box = 0; N_box < pow(4, this->max_levels); N_box++) 
+//         {
+//             tree[this->max_levels][N_box].locals = af::constant(0, rank, f64);
+//         }
+//     }
     
-    for(unsigned N_box = 0; N_box < pow(4, this->max_levels); N_box++) 
-    {
-        for(int i = 0; i < 8; i++) 
-        {
-            int N_neighbor = tree[this->max_levels][N_box].neighbor[i];
-            if(N_neighbor > -1) 
-            {
-                tree[this->max_levels][i].locals +=   this->neighbor_interaction[i]
-                                                    * tree[this->max_levels][N_neighbor].multipoles;
-            }
-        }
+//     for(unsigned N_box = 0; N_box < pow(4, this->max_levels); N_box++) 
+//     {
+//         for(int i = 0; i < 8; i++) 
+//         {
+//             int N_neighbor = tree[this->max_levels][N_box].neighbor[i];
+//             if(N_neighbor > -1) 
+//             {
+//                 tree[this->max_levels][i].locals +=   this->neighbor_interaction[i]
+//                                                     * tree[this->max_levels][N_neighbor].multipoles;
+//             }
+//         }
 
-        tree[this->max_levels][N_box].locals += self_interaction * tree[this->max_levels][N_box].multipoles;
-    }
-}
+//         tree[this->max_levels][N_box].locals += self_interaction * tree[this->max_levels][N_box].multipoles;
+//     }
+// }
 
 #endif

@@ -36,13 +36,14 @@ int main(int argc, char** argv)
     // Initializing the set of points:
     // (p1(:, 0) is x-coords);(p1(:, 1) is y-coords) for p1
     array p1 = -0.5 - af::randu(size, 2, f64); // r = 0.5 c = -1
-    array p2 =  0.5 + af::randu(size, 2, f64); // r = 0.5 c = 1
+    // For the moment, we shall take the source and target
+    // particles to be the same:
     // Creating an instance of MatrixData:
-    MatrixData M(interaction_kernel, p1, p2);
+    MatrixData M(interaction_kernel, p1, p1);
 
     // Array for the charges:
     array charges = 2 * (af::randu(size, f64) - 1);
 
     // We then will pass these set of points to the FMM2D tree class:
-    FMM2DTree T(M, 3, "CHEBYSHEV", charges);
+    FMM2DTree T(M, 7, "CHEBYSHEV", charges);
 }

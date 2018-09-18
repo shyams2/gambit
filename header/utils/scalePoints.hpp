@@ -1,3 +1,6 @@
+#ifndef __scalePoints_hpp__
+#define __scalePoints_hpp__
+
 #include <iostream>
 #include <arrayfire.h>
 using af::array;
@@ -11,3 +14,5 @@ void scalePoints(const double c1, const double r1, const array &x1,
     x2 = c2 + r2 * (x1 - c1) /r1;
     x2.eval();
 }
+
+#endif

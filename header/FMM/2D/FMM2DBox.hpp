@@ -2,8 +2,10 @@
 #define __2DBox_hpp__
 
 #include <iostream>
-// #include <arrayfire.h>
+#include <arrayfire.h>
 #include <vector>
+
+using af::array;
 
 class FMM2DBox 
 {
@@ -72,7 +74,7 @@ public:
     array nodes;      // nodes at the leaf level. In case the kernel is neither homogeneous or log-homogeneous
                       // we will proceed to find these for all the levels.
     
-    array multipoles, locals;
+    array node_charges, node_potentials;
 
     // Constructor for the class
     FMM2DBox();

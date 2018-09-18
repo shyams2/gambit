@@ -140,7 +140,7 @@ public:
     bool isTranslationInvariant();
     bool isHomogeneous();
     bool isLogHomogeneous();
-    double getDegreeOfHomogeneity();
+    double getDegreeOfHomog();
 };
 
 MatrixData::MatrixData(array& input_array)
@@ -577,7 +577,7 @@ bool MatrixData::isLogHomogeneous()
         return false;
 }
 
-double MatrixData::getDegreeOfHomogeneity()
+double MatrixData::getDegreeOfHomog()
 {
     array x = af::randu(10, MatrixData::getDimensionality(), f64);
     array y = af::randu(10, MatrixData::getDimensionality(), f64);
