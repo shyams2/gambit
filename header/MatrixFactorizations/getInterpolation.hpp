@@ -100,9 +100,7 @@ void getL2L3D(array &x, array &y, array &z, array &nodes, array &L2L)
 void getM2L(array &nodes_1, array &nodes_2, MatrixData &M, array &M2L)
 {
     // Evaluating the Kernel function at the Chebyshev nodes:
-    M2L = M.buildArray(int(nodes_1.dims(0)), int(nodes_2.dims(0)),
-                       nodes_1, nodes_2
-                      );
+    M2L = M.buildArray(nodes_1, nodes_2);
     M2L.eval();
 }
 

@@ -76,6 +76,8 @@ public:
     void evaluateAllM2L();
     // Performs the L2L using a downwardsweep:
     void downwardTraversal();
+    // Getting the potentials for the particles:
+    void evaluateL2P();
     // Performs the leaf level interactions:
     void evaluateLeafLevelInteractions();
 };
@@ -210,6 +212,10 @@ FMM2DTree::FMM2DTree(MatrixData &M, unsigned N_nodes, std::string nodes_type, co
     FMM2DTree::evaluateAllM2L();
     cout << "Performing downward sweep" << endl;
     FMM2DTree::downwardTraversal();
+    cout << "Getting potentials for particles using L2P" << endl;
+    FMM2DTree::evaluateL2P();
+    cout << "Evaluation the direct interactions at the leaf levels" << endl;
+    FMM2DTree::evaluateLeafLevelInteractions();
 }
 
 void FMM2DTree::getTransferMatrices()
@@ -1068,30 +1074,29 @@ void FMM2DTree::evaluateLeafLevelInteractions()
     for(unsigned i = 0; i < this->number_of_boxes[this->max_levels]; i++)
     {   
         // Getting the box that is in consideration:
-        FMM2DBox &neighbor_box = this->tree[this->max_levels][i];
+        FMM2DBox &box = this->tree[this->max_levels][i];
         int N_neighbor;
+
+        array targets = (*(this->M_ptr->getSourceCoordsPtr()))(box.inds_in_box);
+        array charges = (*(this->charges_ptr))(box.inds_in_box);
+
         for(unsigned j = 0; j < 8; j++) 
         {
             N_neighbor = this->tree[this->max_levels][i].neighbor[j];
             if(N_neighbor > -1) 
             {
-                FMM2DBox &neighbor_box = tree[this->max_levels][N_neighbor]
+                FMM2DBox &neighbor_box = tree[this->max_levels][N_neighbor];
+                array sources = (*(this->M_ptr->getSourceCoordsPtr()))(neighbor_box.inds_in_box);
+                // Updating the potentials for the particles in the box of consideration
+                // by evaluating the direct interaction with the particles in the neighbor box
                 this->potentials(box.inds_in_box) +=
-                af::matmul(this->M_ptr->buildArray((*(this->M_ptr->getSourceCoordsPtr()))(box.inds_in_box),
-                                                   (*(this->M_ptr->getSourceCoordsPtr()))(neighbor_box.inds_in_box)
-                                                  ),
-                           (*(this->M_ptr->charges_ptr))(box.inds_in_box)
-                          );
+                af::matmul(this->M_ptr->buildArray(targets, sources), charges);
             }
         }
 
         // Self interaction:
         this->potentials(box.inds_in_box) +=
-        af::matmul(this->M_ptr->buildArray((*(this->M_ptr->getSourceCoordsPtr()))(box.inds_in_box),
-                                           (*(this->M_ptr->getSourceCoordsPtr()))(box.inds_in_box)
-                                          ),
-                   (*(this->M_ptr->charges_ptr))(box.inds_in_box)
-                  );
+        af::matmul(this->M_ptr->buildArray(targets, targets),charges);
     }
 }
 

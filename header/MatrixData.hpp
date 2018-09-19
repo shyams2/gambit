@@ -253,12 +253,13 @@ array MatrixData::buildArray(array &targets, array &sources)
     array array_to_return;
     // Allowing broadcasting:
     af::gforSet(true);
-    array_to_return = this->matrixEntriesAF(af::range(targets.elements()),
-                                            af::range(sources.elements()),
+    array_to_return = this->matrixEntriesAF(af::range(targets.dims(0)),
+                                            af::range(sources.dims(0)),
                                             targets, sources
                                            );
     af::gforSet(false);
 
+    array_to_return.eval();
     return array_to_return;
 }
 
