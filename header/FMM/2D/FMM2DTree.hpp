@@ -18,11 +18,11 @@ private:
     unsigned rank;           // Rank of the low-rank interaction
     unsigned max_levels;     // Number of levels in the tree.
                        
-    const array *charges_ptr;  // Holds the information for the charges of the points
-    array standard_nodes_1d;   // Standard nodes alloted as given by user choice in [-1, 1]
-    array standard_nodes;      // Gets the points in 2D
-    std::string nodes_type;    // Whether Chebyshev, or Legendre or Equispaced
-    array potentials;          // Evaluated potentials for all the particles
+    array standard_nodes_1d;  // Standard nodes alloted as given by user choice in [-1, 1]
+    array standard_nodes;     // Gets the points in 2D
+    std::string nodes_type;   // Whether Chebyshev, or Legendre or Equispaced
+    const array *charges_ptr; // Pointer to the array that contains the charges
+    array potentials;         // Evaluated potentials for all the particles
 
     double c_x, c_y, r_x, r_y; // Radii and the center coordinates for the domain
     // Flags which determine structure for the underlying kernel:
@@ -42,15 +42,9 @@ private:
     std::array<af::array, 24> M2L_outer;           // M2L operators from the outer well separated clusters
     std::vector<std::vector<FMM2DBox>> tree;       // The tree storing all the information.
 
-public:
-    // Constructor for the class
-    FMM2DTree(MatrixData &M, unsigned N_nodes, std::string nodes_type, const array &charges);
-    // Destructor for the class:
-    ~FMM2DTree(){};
-  
+    // ===== FUNCTIONS USED IN TREE BUILDING AND PRECOMPUTING OPERATIONS =====
     // Create Tree method:
     void buildTree();
-
     // Assigns relations amongst boxes:
     void assignChild0Relations(int N_level, int N_box);
     void assignChild1Relations(int N_level, int N_box);
@@ -58,29 +52,51 @@ public:
     void assignChild3Relations(int N_level, int N_box);
     // Uses above functions to assign to all boxes in tree:
     void assignTreeRelations();
+    // Transfer from parent to child:
+    void getTransferMatrices();
+    // Getting M2L operators:
+    void getM2LInteractions();
+    // =======================================================================
+
+    // ========== FUNCTIONS USED IN EVALUATION OF POTENTIAL =============
+
+    // Step 1 of algo mentioned in Page 5 of Fong. et al.(P2M):
+    // Gets the charges at the leaf level:
+    void assignLeafCharges();
+
+    // Step 2 of algo mentioned in Page 5 of Fong. et al.(M2M):
+    // Computes the multipoles for all the boxes using upward sweep:
+    void upwardTraveral();
+
+    // Step 3 of algo mentioned in Page 5 of Fong. et al.(M2L):
+    // Computing M2Ls for all the boxes:
+    void evaluateAllM2L();
+
+    // Step 4 of algo mentioned in Page 5 of Fong. et al.(L2L):
+    // Performs the L2L using a downwardsweep:
+    void downwardTraversal();
+
+    // Step 5 of algo mentioned in Page 5 of Fong. et al.(L2L):
+    // Getting the potentials at the particles using node potentials:
+    void evaluateL2P();
+    // Performs the leaf level interactions(i.e. neighbor and self interactions):
+    void evaluateLeafLevelInteractions();
+
+public:
+    // Constructor for the class
+    FMM2DTree(MatrixData &M, unsigned N_nodes, std::string nodes_type);
+    // Destructor for the class:
+    ~FMM2DTree(){};
 
     // Gives the box details of the prescribed box and level number:
     void printBoxDetails(unsigned N_level, unsigned N_box);
     // Lists details of all boxes in the tree
     void printTreeDetails();
-
-    // Transfer from parent to child:
-    void getTransferMatrices();
-    // Getting M2L operators:
-    void getM2LInteractions();
-    // Gets the charges at the leaf level:
-    void assignLeafCharges();
-    // Computes the multipoles for all the boxes using upward sweep:
-    void upwardTraveral();
-    // Computing M2Ls for all the boxes:
-    void evaluateAllM2L();
-    // Performs the L2L using a downwardsweep:
-    void downwardTraversal();
-    // Getting the potentials for the particles:
-    void evaluateL2P();
-    // Performs the leaf level interactions:
-    void evaluateLeafLevelInteractions();
+    // Returns the potential:
+    array& getPotential(const array& charges);
 };
+
+// =================== PUBLIC FUNCTIONS =============================
 
 void FMM2DTree::printBoxDetails(unsigned N_level, unsigned N_box)
 {
@@ -100,14 +116,34 @@ void FMM2DTree::printTreeDetails()
     }
 }
 
-FMM2DTree::FMM2DTree(MatrixData &M, unsigned N_nodes, std::string nodes_type, const array &charges)
+array& FMM2DTree::getPotential(const array &charges)
+{
+    this->charges_ptr = &charges;
+
+    cout << "Getting the charges at the nodes of the leaf level" << endl;
+    FMM2DTree::assignLeafCharges();
+    cout << "Performing upward sweep to get charges" << endl;
+    FMM2DTree::upwardTraveral();
+    cout << "Performing M2L..." << endl;
+    FMM2DTree::evaluateAllM2L();
+    cout << "Performing downward sweep" << endl;
+    FMM2DTree::downwardTraversal();
+    // cout << "Getting potentials for particles using L2P" << endl;
+    // FMM2DTree::evaluateL2P();
+    cout << "Evaluation the direct interactions at the leaf levels" << endl;
+    FMM2DTree::evaluateLeafLevelInteractions();
+
+    this->potentials.eval();
+    return this->potentials;
+}
+
+FMM2DTree::FMM2DTree(MatrixData &M, unsigned N_nodes, std::string nodes_type)
 {   
     this->M_ptr       = &M;
     this->N_nodes     = N_nodes;
     this->nodes_type  = nodes_type;
     this->rank        = N_nodes * N_nodes;
     this->max_levels  = 0; // Initializing to zero. Updated during tree building
-    this->charges_ptr = &charges;
     this->potentials  = af::array(this->M_ptr->getNumCols(), f64);
     
     // Finding the standard nodes(in [-1, 1]):
@@ -204,19 +240,11 @@ FMM2DTree::FMM2DTree(MatrixData &M, unsigned N_nodes, std::string nodes_type, co
     FMM2DTree::assignTreeRelations();
     cout << "Getting M2L and neighbor interactions" << endl;
     FMM2DTree::getM2LInteractions();
-    cout << "Getting the charges at the nodes of the leaf level" << endl;
-    FMM2DTree::assignLeafCharges();
-    cout << "Performing upward sweep to get charges" << endl;
-    FMM2DTree::upwardTraveral();
-    cout << "Performing M2L..." << endl;
-    FMM2DTree::evaluateAllM2L();
-    cout << "Performing downward sweep" << endl;
-    FMM2DTree::downwardTraversal();
-    cout << "Getting potentials for particles using L2P" << endl;
-    FMM2DTree::evaluateL2P();
-    cout << "Evaluation the direct interactions at the leaf levels" << endl;
-    FMM2DTree::evaluateLeafLevelInteractions();
 }
+
+// ======================== END OF PUBLIC FUNCTIONS =======================
+
+// ===== FUNCTIONS USED IN TREE BUILDING AND PRECOMPUTING OPERATIONS INVOLVED =====
 
 void FMM2DTree::getTransferMatrices()
 {
@@ -224,6 +252,7 @@ void FMM2DTree::getTransferMatrices()
     // Initializing L2L array
     L2L_array = array(N_nodes * N_nodes, N_nodes * N_nodes, f64);
 
+    // L2L is used to tranfer the information from the parent to the child
     for(unsigned short N_child = 0; N_child < 4; N_child++)
     {
         nodes_x = (this->standard_nodes_child[N_child])(af::span, 0);
@@ -234,7 +263,8 @@ void FMM2DTree::getTransferMatrices()
         this->L2L[N_child] = L2L_array;
     }
 
-    // M2M is going to be the transpose of the L2L operators:
+    // M2M is used to transfer the information from the children to the parent:
+    // Hence, M2M is going to be the transpose of the L2L operators:
     for(unsigned short N_child = 0; N_child < 4; N_child++)
     {
         this->M2M[N_child] = this->L2L[N_child].T();
@@ -769,6 +799,9 @@ void FMM2DTree::getM2LInteractions()
 {
     array M2L, nodes;
 
+    // The M2L array transfers information from the
+    // surrounding box to the box of concern:
+    
     // ============= Getting outer interations ============================
     // Getting interaction between boxes on the lower edge:
     for(unsigned i = 0; i < 6; i++)
@@ -870,6 +903,10 @@ void FMM2DTree::getM2LInteractions()
     }
 }
 
+// ===== END OF FUNCTIONS USED IN TREE BUILDING AND PRECOMPUTING OPERATIONS INVOLVED =====
+
+// ========== FUNCTIONS USED IN EVALUATION OF POTENTIAL =============
+
 void FMM2DTree::assignLeafCharges()
 {
     // Looping over the boxes at the leaf level:
@@ -888,7 +925,7 @@ void FMM2DTree::assignLeafCharges()
                     0, 1, std_locations_y
                    );
 
-        // Getting the P2M operator:
+        // Getting the P2M operator which interpolates information from the particles to nodes:
         array P2M_array = array(node.inds_in_box.elements(), N_nodes * N_nodes, f64);
         getL2L2D(std_locations_x, std_locations_y, this->standard_nodes_1d, P2M_array);
         tree[this->max_levels][i].node_charges = af::matmul(P2M_array.T(), (*this->charges_ptr)(node.inds_in_box));
@@ -1077,16 +1114,18 @@ void FMM2DTree::evaluateLeafLevelInteractions()
         FMM2DBox &box = this->tree[this->max_levels][i];
         int N_neighbor;
 
-        array targets = (*(this->M_ptr->getSourceCoordsPtr()))(box.inds_in_box);
-        array charges = (*(this->charges_ptr))(box.inds_in_box);
+        array targets = (*(this->M_ptr->getSourceCoordsPtr()))(box.inds_in_box, af::span);
 
         for(unsigned j = 0; j < 8; j++) 
         {
             N_neighbor = this->tree[this->max_levels][i].neighbor[j];
+    
             if(N_neighbor > -1) 
             {
+                cout << N_neighbor << endl;
                 FMM2DBox &neighbor_box = tree[this->max_levels][N_neighbor];
-                array sources = (*(this->M_ptr->getSourceCoordsPtr()))(neighbor_box.inds_in_box);
+                array sources = (*(this->M_ptr->getSourceCoordsPtr()))(neighbor_box.inds_in_box, af::span);
+                array charges = (*(this->charges_ptr))(neighbor_box.inds_in_box);
                 // Updating the potentials for the particles in the box of consideration
                 // by evaluating the direct interaction with the particles in the neighbor box
                 this->potentials(box.inds_in_box) +=
@@ -1095,9 +1134,12 @@ void FMM2DTree::evaluateLeafLevelInteractions()
         }
 
         // Self interaction:
+        array charges = (*(this->charges_ptr))(box.inds_in_box);
         this->potentials(box.inds_in_box) +=
         af::matmul(this->M_ptr->buildArray(targets, targets),charges);
     }
 }
+
+// ========== END OF FUNCTIONS USED IN EVALUATION OF POTENTIAL =============
 
 #endif
