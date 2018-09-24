@@ -39,7 +39,7 @@ int main(int argc, char** argv)
     MatrixData M(interaction_kernel, p, p);
 
     // We then will pass these set of points to the FMM2D tree class:
-    FMM2DTree T(M, 8, "CHEBYSHEV");
+    FMM2DTree T(M, 3, "CHEBYSHEV");
 
     // Array for the charges:
     array charges = 2 * (af::randn(size, f64) - 1);
