@@ -39,18 +39,19 @@ int main(int argc, char** argv)
     MatrixData M(interaction_kernel, p, p);
 
     // We then will pass these set of points to the FMM2D tree class:
-    FMM2DTree T(M, 7, "CHEBYSHEV");
+    FMM2DTree T(M, 8, "CHEBYSHEV");
 
     // Array for the charges:
     array charges = 2 * (af::randn(size, f64) - 1);
     array &potential = T.getPotential(charges);
 
-    // Direct evaluation:
+    // // Direct evaluation:
     cout << "Performing a direct evaluation using MatVec multiplication:" << endl;
     array potential_direct = af::matmul(M.getArray(), charges);
     potential_direct.eval();
 
-    cout << "Norm of error:" << af::norm(potential_direct - potential) << endl;;
-
+    cout << "=============ERROR IN THE CALCULATED POTENTIAL=============" << endl;
+    cout << "Absolute Error: " << af::norm(potential_direct - potential) << endl;
+    cout << "Relative Error: " << af::norm(potential_direct - potential) / af::norm(potential_direct) << endl;
     return 0;
 }

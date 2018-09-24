@@ -35,12 +35,12 @@ private:
     std::vector<double> box_homog_radius;
     double alpha; // degree of homog
 
-    std::array<af::array, 4> standard_nodes_child; // Nodes of the child given that parent has standard nodes in [-1, 1]
-    std::array<af::array, 4> L2L;                  // L2L operators from the parent to the four children
-    std::array<af::array, 4> M2M;                  // M2M operators from the children to the parent
-    std::array<af::array, 16> M2L_inner;           // M2L operators from the inner well separated clusters
-    std::array<af::array, 24> M2L_outer;           // M2L operators from the outer well separated clusters
-    std::vector<std::vector<FMM2DBox>> tree;       // The tree storing all the information.
+    std::array<af::array, 4> standard_nodes_child;    // Nodes of the child given that parent has standard nodes in [-1, 1]
+    std::array<af::array, 4> L2L;                     // L2L operators from the parent to the four children
+    std::array<af::array, 4> M2M;                     // M2M operators from the children to the parent
+    std::vector<std::array<af::array, 16>> M2L_inner; // M2L operators from the inner well separated clusters
+    std::vector<std::array<af::array, 24>> M2L_outer; // M2L operators from the outer well separated clusters
+    std::vector<std::vector<FMM2DBox>> tree;          // The tree storing all the information.
 
     // ===== FUNCTIONS USED IN TREE BUILDING AND PRECOMPUTING OPERATIONS =====
     // Create Tree method:
@@ -56,8 +56,10 @@ private:
     void getTransferMatrices();
     // Getting M2L operators:
     void getM2LInteractions();
-    // =======================================================================
+    // Getting M2L operators when kernel is homogeneous:
+    void getM2LInteractionsHomogeneous();
 
+    // ==================================================================
     // ========== FUNCTIONS USED IN EVALUATION OF POTENTIAL =============
 
     // Step 1 of algo mentioned in Page 5 of Fong. et al.(P2M):
@@ -128,8 +130,8 @@ array& FMM2DTree::getPotential(const array &charges)
     FMM2DTree::evaluateAllM2L();
     cout << "Performing downward sweep" << endl;
     FMM2DTree::downwardTraversal();
-    // cout << "Getting potentials for particles using L2P" << endl;
-    // FMM2DTree::evaluateL2P();
+    cout << "Getting potentials for particles using L2P" << endl;
+    FMM2DTree::evaluateL2P();
     cout << "Evaluation the direct interactions at the leaf levels" << endl;
     FMM2DTree::evaluateLeafLevelInteractions();
 
@@ -209,8 +211,19 @@ FMM2DTree::FMM2DTree(MatrixData &M, unsigned N_nodes, std::string nodes_type)
     determineCenterAndRadius((*(this->M_ptr->getSourceCoordsPtr()))(af::span, 0), this->c_x, this->r_x);
     determineCenterAndRadius((*(this->M_ptr->getSourceCoordsPtr()))(af::span, 1), this->c_y, this->r_y);
 
+    // If we use the above obtained radii, we will get some particles on the edge of the domain
+    // To account for these edge-cases, we will slightly increase the radius:
+    this->r_x = (1 + 1e-12) * this->r_x;
+    this->r_y = (1 + 1e-12) * this->r_y;
+
     // Determining nature of the underlying problem:
     this->is_translation_invariant = this->M_ptr->isTranslationInvariant();
+    if(this->is_translation_invariant == false)
+    {
+        cout << "Non translation-invariant Kernels not supported!!!" << endl;
+        exit(1);
+    }
+
     // Checking that the radius of r_x and r_y are approximately the same:
     // TODO: Need to see if this is a good enough treshold:
     if(2 * fabs(this->r_x - this->r_y) / (this->r_x + this->r_y) < 1e-3)
@@ -238,14 +251,16 @@ FMM2DTree::FMM2DTree(MatrixData &M, unsigned N_nodes, std::string nodes_type)
     cout << "Number of Levels in the Tree: " << this->max_levels << endl;
     cout << "Assigning Relations Amongst Boxes in the tree..." << endl;
     FMM2DTree::assignTreeRelations();
-    cout << "Getting M2L and neighbor interactions" << endl;
-    FMM2DTree::getM2LInteractions();
+    cout << "Getting M2L interactions" << endl;
+    if(this->is_homogeneous || this->is_log_homogeneous)
+        FMM2DTree::getM2LInteractionsHomogeneous();
+    else
+        FMM2DTree::getM2LInteractions();
 }
 
 // ======================== END OF PUBLIC FUNCTIONS =======================
 
 // ===== FUNCTIONS USED IN TREE BUILDING AND PRECOMPUTING OPERATIONS INVOLVED =====
-
 void FMM2DTree::getTransferMatrices()
 {
     array nodes_x, nodes_y, L2L_array;
@@ -336,7 +351,6 @@ void FMM2DTree::buildTree()
         std::vector<FMM2DBox> level;
         
         level.reserve(this->number_of_boxes[this->max_levels]);
-        unsigned N_leaf_criterion = 0; // number of cells that satisfy leaf criterion
         for(unsigned i = 0; i < (unsigned) pow(4, this->max_levels); i++) 
         {
             FMM2DBox box;
@@ -359,19 +373,18 @@ void FMM2DTree::buildTree()
             // Finding the indices in the children:
             box.inds_in_box =
             parent_node.inds_in_box(af::where(   locations_local_x < box.c_x + box.r_x
-                                              && locations_local_x > box.c_x - box.r_x
+                                              && locations_local_x >= box.c_x - box.r_x
                                               && locations_local_y < box.c_y + box.r_y
-                                              && locations_local_y > box.c_y - box.r_y
+                                              && locations_local_y >= box.c_y - box.r_y
                                              )
                                    );
 
             box.inds_in_box.eval();
 
-            // We are saying that if N < 4 * N_nodes^2, then it's 
-            // meets the criterion of being a leaf cell:
+            // If even a single box shows that it contains < 4 * rank particles, we terminate:
             if(box.inds_in_box.elements()<= 4 * this->rank)
             {
-                N_leaf_criterion++;
+                reached_leaf = true;
             }
 
             // Assigning children for the box:
@@ -383,11 +396,7 @@ void FMM2DTree::buildTree()
 
             level.push_back(box);
         }
-
         tree.push_back(level);
-        // If all the cells in the level have N < 4 * rank:
-        if(N_leaf_criterion == this->number_of_boxes[this->max_levels])
-            reached_leaf = true;
     }
 }
 
@@ -795,13 +804,14 @@ void FMM2DTree::assignChild3Relations(int N_level, int N_box)
     }
 }
 
-void FMM2DTree::getM2LInteractions() 
+void FMM2DTree::getM2LInteractionsHomogeneous() 
 {
-    array M2L, nodes;
+    std::array<array, 24> M2L_outer_homogeneous;
+    std::array<array, 16> M2L_inner_homogeneous;
 
+    array M2L, nodes;
     // The M2L array transfers information from the
     // surrounding box to the box of concern:
-    
     // ============= Getting outer interations ============================
     // Getting interaction between boxes on the lower edge:
     for(unsigned i = 0; i < 6; i++)
@@ -812,7 +822,7 @@ void FMM2DTree::getM2LInteractions()
 
         getM2L(this->standard_nodes, nodes, *(this->M_ptr), M2L);
         M2L.eval();
-        this->M2L_outer[i] = M2L;
+        M2L_outer_homogeneous[i] = M2L;
     }
 
     // Getting interaction between boxes on the right edge:
@@ -824,7 +834,7 @@ void FMM2DTree::getM2LInteractions()
 
         getM2L(this->standard_nodes, nodes, *(this->M_ptr), M2L);
         M2L.eval();
-        this->M2L_outer[i + 6] = M2L;
+        M2L_outer_homogeneous[i + 6] = M2L;
     }
 
     // Getting interaction between boxes on the top edge:
@@ -836,7 +846,7 @@ void FMM2DTree::getM2LInteractions()
 
         getM2L(this->standard_nodes, nodes, *(this->M_ptr), M2L);
         M2L.eval();
-        this->M2L_outer[i + 12] = M2L;
+        M2L_outer_homogeneous[i + 12] = M2L;
     }
 
     // Getting interaction between boxes on the left edge:
@@ -848,10 +858,8 @@ void FMM2DTree::getM2LInteractions()
 
         getM2L(this->standard_nodes, nodes, *(this->M_ptr), M2L);
         M2L.eval();
-        this->M2L_outer[i + 18] = M2L;
+        M2L_outer_homogeneous[i + 18] = M2L;
     }
-
-    // ====================================================================
 
     // ============= Getting inner interations ============================
     // Getting interaction between boxes on the lower edge:
@@ -863,7 +871,7 @@ void FMM2DTree::getM2LInteractions()
 
         getM2L(this->standard_nodes, nodes, *(this->M_ptr), M2L);
         M2L.eval();
-        this->M2L_inner[i] = M2L;
+        M2L_inner_homogeneous[i] = M2L;
     }
 
     // Getting interaction between boxes on the right edge:
@@ -875,7 +883,7 @@ void FMM2DTree::getM2LInteractions()
 
         getM2L(this->standard_nodes, nodes, *(this->M_ptr), M2L);
         M2L.eval();
-        this->M2L_inner[i + 4] = M2L;
+        M2L_inner_homogeneous[i + 4] = M2L;
     }
 
     // Getting interaction between boxes on the top edge:
@@ -887,7 +895,7 @@ void FMM2DTree::getM2LInteractions()
 
         getM2L(this->standard_nodes, nodes, *(this->M_ptr), M2L);
         M2L.eval();
-        this->M2L_inner[i + 8] = M2L;
+        M2L_inner_homogeneous[i + 8] = M2L;
     }
 
     // Getting interaction between boxes on the left edge:
@@ -899,7 +907,143 @@ void FMM2DTree::getM2LInteractions()
 
         getM2L(this->standard_nodes, nodes, *(this->M_ptr), M2L);
         M2L.eval();
-        this->M2L_inner[i + 12] = M2L;
+        M2L_inner_homogeneous[i + 12] = M2L;
+    }
+
+    this->M2L_outer.push_back(M2L_outer_homogeneous);
+    this->M2L_inner.push_back(M2L_inner_homogeneous);
+}
+
+void FMM2DTree::getM2LInteractions() 
+{
+    // M2L inner and outer operators for a single level:
+    std::array<array, 24> M2L_outer_level;
+    std::array<array, 16> M2L_inner_level;
+
+    array M2L, nodes, scaled_standard_nodes_x, scaled_standard_nodes_y, scaled_standard_nodes;
+    for(unsigned i = 0; i < this->max_levels; i++)
+    {
+        // Finding the radii of the boxes at this level:
+        // Note that although we've considered the box number 0, any box number maybe considered
+        // (Box number doesn't matter since we're using a uniform tree)
+        double r_x = this->tree[i][0].r_x;
+        double r_y = this->tree[i][0].r_y;
+
+        // Scaling to the current level's box radius
+        scalePoints(0, 1, this->standard_nodes(af::span, 0),
+                    0, r_x, scaled_standard_nodes_x
+                   );
+
+        scalePoints(0, 1, this->standard_nodes(af::span, 1),
+                    0, r_y, scaled_standard_nodes_y
+                   );
+
+        scaled_standard_nodes = af::join(1, scaled_standard_nodes_x, scaled_standard_nodes_y);
+
+        // The M2L array transfers information from the
+        // surrounding box to the box of concern:
+        // ============= Getting outer interations ============================
+        // Getting interaction between boxes on the lower edge:
+        for(unsigned i = 0; i < 6; i++)
+        {
+            nodes= af::join(1, scaled_standard_nodes_x + 2 * r_x * (i - 3),
+                            scaled_standard_nodes_y - 6 * r_y
+                           );
+
+            getM2L(scaled_standard_nodes, nodes, *(this->M_ptr), M2L);
+            M2L.eval();
+            M2L_outer_level[i] = M2L;
+        }
+
+        // Getting interaction between boxes on the right edge:
+        for(unsigned i = 0; i < 6; i++)
+        {
+            nodes= af::join(1, scaled_standard_nodes_x + 6 * r_x,
+                            scaled_standard_nodes_y + 2 * r_y * (i - 3)
+                           );
+
+            getM2L(scaled_standard_nodes, nodes, *(this->M_ptr), M2L);
+            M2L.eval();
+            M2L_outer_level[i + 6] = M2L;
+        }
+
+        // Getting interaction between boxes on the top edge:
+        for(unsigned i = 0; i < 6; i++)
+        {
+            nodes= af::join(1, scaled_standard_nodes_x + 2 * r_x * (3 - i),
+                            scaled_standard_nodes_y + 6 * r_y
+                           );
+
+            getM2L(scaled_standard_nodes, nodes, *(this->M_ptr), M2L);
+            M2L.eval();
+            M2L_outer_level[i + 12] = M2L;
+        }
+
+        // Getting interaction between boxes on the left edge:
+        for(unsigned i = 0; i < 6; i++)
+        {
+            nodes= af::join(1, scaled_standard_nodes_x - 6 * r_x,
+                            scaled_standard_nodes_y + 2 * r_y * (3 - i)
+                           );
+
+            getM2L(scaled_standard_nodes, nodes, *(this->M_ptr), M2L);
+            M2L.eval();
+            M2L_outer_level[i + 18] = M2L;
+        }
+
+        // ====================================================================
+
+        // ============= Getting inner interations ============================
+        // Getting interaction between boxes on the lower edge:
+        for(unsigned i = 0; i < 4; i++)
+        {
+            nodes= af::join(1, scaled_standard_nodes_x + 2 * r_x * (i - 2),
+                            scaled_standard_nodes_y - 4 * r_y
+                           );
+
+            getM2L(scaled_standard_nodes, nodes, *(this->M_ptr), M2L);
+            M2L.eval();
+            M2L_inner_level[i] = M2L;
+        }
+
+        // Getting interaction between boxes on the right edge:
+        for(unsigned i = 0; i < 4; i++)
+        {
+            nodes= af::join(1, scaled_standard_nodes_x + 4 * r_x,
+                            scaled_standard_nodes_y + 2 * r_y * (i - 2)
+                           );
+
+            getM2L(scaled_standard_nodes, nodes, *(this->M_ptr), M2L);
+            M2L.eval();
+            M2L_inner_level[i + 4] = M2L;
+        }
+
+        // Getting interaction between boxes on the top edge:
+        for(unsigned i = 0; i < 4; i++)
+        {
+            nodes= af::join(1, scaled_standard_nodes_x + 2 * r_x * (2 - i),
+                            scaled_standard_nodes_y + 4 * r_y
+                           );
+
+            getM2L(scaled_standard_nodes, nodes, *(this->M_ptr), M2L);
+            M2L.eval();
+            M2L_inner_level[i + 8] = M2L;
+        }
+
+        // Getting interaction between boxes on the left edge:
+        for(unsigned i = 0; i < 4; i++)
+        {
+            nodes= af::join(1, scaled_standard_nodes_x - 4 * r_x,
+                            scaled_standard_nodes_y + 2 * r_y * (2 - i)
+                           );
+
+            getM2L(scaled_standard_nodes, nodes, *(this->M_ptr), M2L);
+            M2L.eval();
+            M2L_inner_level[i + 12] = M2L;
+        }
+    
+        this->M2L_outer.push_back(M2L_outer_level);
+        this->M2L_inner.push_back(M2L_inner_level);
     }
 }
 
@@ -981,7 +1125,7 @@ void FMM2DTree::evaluateAllM2L()
                     int N_inner = box.inner[i];
                     if(N_inner > -1) 
                     {
-                        box.node_potentials += af::matmul(this->M2L_inner[i],
+                        box.node_potentials += af::matmul(this->M2L_inner[0][i],
                                                           this->tree[N_level][N_inner].node_charges
                                                          );
                     }
@@ -993,7 +1137,7 @@ void FMM2DTree::evaluateAllM2L()
                     int N_outer = box.outer[i];
                     if(N_outer > -1) 
                     {
-                        box.node_potentials += af::matmul(this->M2L_outer[i],
+                        box.node_potentials += af::matmul(this->M2L_outer[0][i],
                                                           this->tree[N_level][N_outer].node_charges
                                                          );
                     }
@@ -1011,7 +1155,7 @@ void FMM2DTree::evaluateAllM2L()
                     int N_inner = box.inner[i];
                     if(N_inner > -1) 
                     {
-                        box.node_potentials += af::matmul(this->M2L_inner[i],
+                        box.node_potentials += af::matmul(this->M2L_inner[0][i],
                                                           this->tree[N_level][N_inner].node_charges
                                                          );
 
@@ -1029,7 +1173,7 @@ void FMM2DTree::evaluateAllM2L()
                     int N_outer = box.outer[i];
                     if(N_outer > -1) 
                     {
-                        box.node_potentials += af::matmul(this->M2L_outer[i],
+                        box.node_potentials += af::matmul(this->M2L_outer[0][i],
                                                           this->tree[N_level][N_outer].node_charges
                                                          );
 
@@ -1113,7 +1257,6 @@ void FMM2DTree::evaluateLeafLevelInteractions()
         // Getting the box that is in consideration:
         FMM2DBox &box = this->tree[this->max_levels][i];
         int N_neighbor;
-
         array targets = (*(this->M_ptr->getSourceCoordsPtr()))(box.inds_in_box, af::span);
 
         for(unsigned j = 0; j < 8; j++) 
@@ -1122,7 +1265,6 @@ void FMM2DTree::evaluateLeafLevelInteractions()
     
             if(N_neighbor > -1) 
             {
-                cout << N_neighbor << endl;
                 FMM2DBox &neighbor_box = tree[this->max_levels][N_neighbor];
                 array sources = (*(this->M_ptr->getSourceCoordsPtr()))(neighbor_box.inds_in_box, af::span);
                 array charges = (*(this->charges_ptr))(neighbor_box.inds_in_box);
