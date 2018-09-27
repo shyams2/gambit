@@ -33,6 +33,8 @@ using std::string;
 using std::abs; // NOTE: using abs without std down casts to int
 using af::array;
 
+static array EMPTY_ARRAY = array();
+
 class MatrixData
 {
 
@@ -137,10 +139,10 @@ public:
     void loadArray(string file_name);
 
     // Determine the kernel type:
-    bool isTranslationInvariant();
-    bool isHomogeneous();
-    bool isLogHomogeneous();
-    double getDegreeOfHomog();
+    bool isTranslationInvariant(double dim);
+    bool isHomogeneous(double dim);
+    bool isLogHomogeneous(double dim);
+    double getDegreeOfHomog(double dim);
 };
 
 MatrixData::MatrixData(array& input_array)
@@ -198,7 +200,7 @@ MatrixData::MatrixData(size_t m, size_t n, double singular_min, double singular_
 }
 
 MatrixData::MatrixData(std::function<array(array, array, const array&, const array&)> matrixEntries,
-                       array &targets, array &sources
+                       array &targets = EMPTY_ARRAY, array &sources = EMPTY_ARRAY
                       )
 {
     this->matrixEntriesAF = matrixEntries;
@@ -470,10 +472,13 @@ void MatrixData::loadArray(string file_name)
     this->A = array(this->getNumRows(), this->getNumCols(), temp.data(), afHost);
 }
 
-bool MatrixData::isTranslationInvariant()
+bool MatrixData::isTranslationInvariant(double dim = -1)
 {   
-    array x = af::randu(10, MatrixData::getDimensionality(), f64);
-    array y = af::randu(10, MatrixData::getDimensionality(), f64);
+    if(dim == -1)
+        dim = MatrixData::getDimensionality();
+
+    array x = af::randu(10, dim, f64);
+    array y = af::randu(10, dim, f64);
 
     af::gforSet(true);
     array res = this->matrixEntriesAF(af::range(10),
@@ -498,10 +503,13 @@ bool MatrixData::isTranslationInvariant()
         return false;
 }
 
-bool MatrixData::isHomogeneous()
+bool MatrixData::isHomogeneous(double dim = -1)
 {
-    array x = af::randu(10, MatrixData::getDimensionality(), f64);
-    array y = af::randu(10, MatrixData::getDimensionality(), f64);
+    if(dim == -1)
+        dim = MatrixData::getDimensionality();
+
+    array x = af::randu(10, dim, f64);
+    array y = af::randu(10, dim, f64);
 
     af::gforSet(true);
     array res = this->matrixEntriesAF(af::range(10),
@@ -538,10 +546,13 @@ bool MatrixData::isHomogeneous()
         return false;
 }
 
-bool MatrixData::isLogHomogeneous()
+bool MatrixData::isLogHomogeneous(double dim = -1)
 {
-    array x = af::randu(10, MatrixData::getDimensionality(), f64);
-    array y = af::randu(10, MatrixData::getDimensionality(), f64);
+    if(dim == -1)
+        dim = MatrixData::getDimensionality();
+
+    array x = af::randu(10, dim, f64);
+    array y = af::randu(10, dim, f64);
 
     af::gforSet(true);
     array res = this->matrixEntriesAF(af::range(10),
@@ -578,10 +589,13 @@ bool MatrixData::isLogHomogeneous()
         return false;
 }
 
-double MatrixData::getDegreeOfHomog()
+double MatrixData::getDegreeOfHomog(double dim = -1)
 {
-    array x = af::randu(10, MatrixData::getDimensionality(), f64);
-    array y = af::randu(10, MatrixData::getDimensionality(), f64);
+    if(dim == -1)
+        dim = MatrixData::getDimensionality();
+
+    array x = af::randu(10, dim, f64);
+    array y = af::randu(10, dim, f64);
 
     af::gforSet(true);
     array res = this->matrixEntriesAF(af::range(10),
@@ -599,12 +613,12 @@ double MatrixData::getDegreeOfHomog()
     af::gforSet(false);
 
     double alpha;
-    if(MatrixData::isHomogeneous())
+    if(MatrixData::isHomogeneous(dim))
     {
         alpha = log(af::mean<double>(res_scale / res)) / log(scale);
     }
 
-    else if(MatrixData::isLogHomogeneous())
+    else if(MatrixData::isLogHomogeneous(dim))
     {
         alpha = af::mean<double>(res_scale - res) / log(scale);
     }

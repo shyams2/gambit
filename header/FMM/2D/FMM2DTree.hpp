@@ -14,12 +14,14 @@ using af::matmul;
 class FMM2DTree 
 {
 private:
+    
     MatrixData *M_ptr;       // Pointer to the structure describing the underlying problem
+    bool user_def_locations; // User defined locations for the points in the domain
     unsigned N;              // Total number of source particles
     unsigned N_nodes;        // Number of nodes used for interpolation
     unsigned rank;           // Rank of the low-rank interaction
     unsigned max_levels;     // Number of levels in the tree.
-                       
+
     array standard_nodes_1d;  // Standard nodes alloted as given by user choice in [-1, 1]
     array standard_nodes;     // Gets the points in 2D
     std::string nodes_type;   // Whether Chebyshev, or Legendre or Equispaced
@@ -37,17 +39,18 @@ private:
     std::vector<double> box_homog_radius;
     double alpha; // degree of homog
 
-    std::array<af::array, 4> standard_nodes_child;              // Nodes of the child given that parent has standard nodes in [-1, 1]
-    std::array<af::array, 4> L2L;                               // L2L operators from the parent to the four children
-    std::array<af::array, 4> M2M;                               // M2M operators from the children to the parent
-    std::vector<std::array<af::array, 16>> M2L_inner;           // M2L operators from the inner well separated clusters
-    std::vector<std::array<af::array, 24>> M2L_outer;           // M2L operators from the outer well separated clusters
-    std::vector<std::vector<FMM2DBox>> tree;                    // The tree storing all the information.
+    std::array<af::array, 4> standard_nodes_child;    // Nodes of the child given that parent has standard nodes in [-1, 1]
+    std::array<af::array, 4> L2L;                     // L2L operators from the parent to the four children
+    std::array<af::array, 4> M2M;                     // M2M operators from the children to the parent
+    std::vector<std::array<af::array, 16>> M2L_inner; // M2L operators from the inner well separated clusters
+    std::vector<std::array<af::array, 24>> M2L_outer; // M2L operators from the outer well separated clusters
+    std::vector<std::vector<FMM2DBox>> tree;          // The tree storing all the information.
 
     // The following operators are used when the charges at 
     // the leaf level are placed at the standard nodes:
-    std::vector<std::array<af::array, 8>> neighbor_interaction; // Operators used for neighbor interaction
-    array self_interaction;                                     // Self-interaction operator 
+    // NOTE: These operations only need to be performed at the leaf level:
+    std::array<af::array, 8> neighbor_interaction; // Operators used for neighbor interaction
+    array self_interaction;                        // Self-interaction operator 
 
     // ===== FUNCTIONS USED IN TREE BUILDING AND PRECOMPUTING OPERATIONS =====
     // Create Tree method:
@@ -65,6 +68,8 @@ private:
     void getM2LInteractions();
     // Getting M2L operators when kernel is homogeneous:
     void getM2LInteractionsHomogeneous();
+    // Getting the neighbour and self interactions:
+    void getNeighborSelfInteractions();
 
     // ==================================================================
     // ========== FUNCTIONS USED IN EVALUATION OF POTENTIAL =============
@@ -169,6 +174,14 @@ FMM2DTree::FMM2DTree(MatrixData &M, unsigned N_nodes, std::string nodes_type,
     this->rank       = N_nodes * N_nodes;
     this->potentials = af::array(this->M_ptr->getNumCols(), f64);
     this->max_levels = N_levels;
+
+    // Depending upon whether the points are at the location
+    // of the nodes on the leaf level, we'll set the following flag:
+    if(N_levels == 0)
+        this->user_def_locations = true;
+
+    else
+        this->user_def_locations = false;
     
     // Finding the standard nodes(in [-1, 1]):
     getStandardNodes(N_nodes, nodes_type, this->standard_nodes_1d);
@@ -219,6 +232,7 @@ FMM2DTree::FMM2DTree(MatrixData &M, unsigned N_nodes, std::string nodes_type,
     // For child2:
     child_nodes = 0.5 * (this->standard_nodes + 1);
     child_nodes.eval();
+    af_print(child_nodes);
     this->standard_nodes_child[2] = child_nodes;
 
     // For child3:
@@ -241,6 +255,8 @@ FMM2DTree::FMM2DTree(MatrixData &M, unsigned N_nodes, std::string nodes_type,
         this->r_y = (1 + 1e-14) * this->r_y;
     }
 
+    // If the set of points isn't given then we are solving in a domain that uses the radius
+    // that is given by the user. Additionally, it is assumed that the box is centered at (0, 0)
     else
     {
         this->c_x = this->c_y = 0;
@@ -249,7 +265,7 @@ FMM2DTree::FMM2DTree(MatrixData &M, unsigned N_nodes, std::string nodes_type,
 
 
     // Determining nature of the underlying problem:
-    this->is_translation_invariant = this->M_ptr->isTranslationInvariant();
+    this->is_translation_invariant = this->M_ptr->isTranslationInvariant(2);
     if(this->is_translation_invariant == false)
     {
         cout << "Non translation-invariant Kernels not supported!!!" << endl;
@@ -260,12 +276,12 @@ FMM2DTree::FMM2DTree(MatrixData &M, unsigned N_nodes, std::string nodes_type,
     // TODO: Need to see if this is a good enough treshold:
     if(2 * fabs(this->r_x - this->r_y) / (this->r_x + this->r_y) < 1e-3)
     {
-        this->is_homogeneous     = this->M_ptr->isHomogeneous();
-        this->is_log_homogeneous = this->M_ptr->isLogHomogeneous();
+        this->is_homogeneous     = this->M_ptr->isHomogeneous(2);
+        this->is_log_homogeneous = this->M_ptr->isLogHomogeneous(2);
         
         if(this->is_homogeneous || this->is_log_homogeneous)
         {
-            this->alpha = this->M_ptr->getDegreeOfHomog();
+            this->alpha = this->M_ptr->getDegreeOfHomog(2);
         } 
     }
 
@@ -284,10 +300,14 @@ FMM2DTree::FMM2DTree(MatrixData &M, unsigned N_nodes, std::string nodes_type,
     cout << "Assigning Relations Amongst Boxes in the tree..." << endl;
     FMM2DTree::assignTreeRelations();
     cout << "Getting M2L interactions" << endl;
+    
     if(this->is_homogeneous || this->is_log_homogeneous)
         FMM2DTree::getM2LInteractionsHomogeneous();
     else
         FMM2DTree::getM2LInteractions();
+    
+    if(this->user_def_locations == false)
+        FMM2DTree::getNeighborSelfInteractions();
 }
 
 // ======================== END OF PUBLIC FUNCTIONS =======================
@@ -1089,6 +1109,70 @@ void FMM2DTree::getM2LInteractions()
         this->M2L_outer.push_back(M2L_outer_level);
         this->M2L_inner.push_back(M2L_inner_level);
     }
+}
+
+
+void FMM2DTree::getNeighborSelfInteractions() 
+{
+    array M2L, nodes, leaf_nodes;
+    
+    // Get neighbor interactions:
+    double r_x_leaf = this->tree[this->max_levels][0].r_x; // since its a uniform tree, 
+                                                           // we don't bother about the box considered
+    double r_y_leaf = this->tree[this->max_levels][0].r_y;
+
+    leaf_nodes = af::join(1, this->standard_nodes(af::span, 0) * r_x_leaf,
+                          this->standard_nodes(af::span, 1) * r_y_leaf
+                         );
+
+    // Finding interaction with boxes on the 
+    for(unsigned short i = 0; i < 2; i++)
+    {
+        nodes= af::join(1, (this->standard_nodes(af::span, 0) + 2 * (i - 1)) * r_x_leaf,
+                        (this->standard_nodes(af::span, 1) - 2) * r_y_leaf
+                       );
+
+        getM2L(leaf_nodes, nodes, *(this->M_ptr), M2L);
+        M2L.eval();
+        this->neighbor_interaction[i] = M2L;
+    }
+
+    for(unsigned short i = 0; i < 2; i++)
+    {
+        nodes= af::join(1, (this->standard_nodes(af::span, 0) + 2) * r_x_leaf,
+                        (this->standard_nodes(af::span, 1) + 2 * (i - 1)) * r_y_leaf
+                       );
+        getM2L(leaf_nodes, nodes, *(this->M_ptr), M2L);
+        M2L.eval();
+        this->neighbor_interaction[i + 2] = M2L;
+    }
+
+
+    for(unsigned short i = 0; i < 2; i++)
+    {
+        nodes= af::join(1, (this->standard_nodes(af::span, 0) + 2 * (1 - i)) * r_x_leaf,
+                        (this->standard_nodes(af::span, 1) + 2) * r_y_leaf
+                       );
+
+        getM2L(this->standard_nodes, nodes, *(this->M_ptr), M2L);
+        M2L.eval();
+        this->neighbor_interaction[i + 4] = M2L;
+    }
+
+    for(unsigned short i = 0; i < 2; i++)
+    {
+        nodes= af::join(1, (this->standard_nodes(af::span, 0) - 2) * r_x_leaf,
+                        (this->standard_nodes(af::span, 1) + 2 * (1 - i)) * r_y_leaf
+                       );
+
+        getM2L(this->standard_nodes, nodes, *(this->M_ptr), M2L);
+        M2L.eval();
+        this->neighbor_interaction[i + 6] = M2L;
+    }
+
+    // Getting self-interaction:
+    getM2L(leaf_nodes, leaf_nodes, *(this->M_ptr), this->self_interaction);
+    this->self_interaction.eval();
 }
 
 // ===== END OF FUNCTIONS USED IN TREE BUILDING AND PRECOMPUTING OPERATIONS INVOLVED =====

@@ -26,32 +26,19 @@ array interaction_kernel(const array &i, const array &j, const array &targets, c
 
 int main(int argc, char** argv)
 {
-    unsigned size = atoi(argv[1]);
     // Printing backend information:
     af::info();
     cout << endl;
 
-    // Initializing the set of points:
-    array p = 2 * (af::randu(size, 2, f64) - 1); // r = 1, c = 0
-    // For the moment, we shall take the source and target
-    // particles to be the same:
     // Creating an instance of MatrixData:
-    MatrixData M(interaction_kernel, p, p);
+    MatrixData M(interaction_kernel);
 
-    // We then will pass these set of points to the FMM2D tree class:
-    FMM2DTree T(M, 3, "CHEBYSHEV");
+    // We then will pass this to the FMM2D tree class:
+    FMM2DTree T(M, 3, "CHEBYSHEV", 4, 1);
 
-    // Array for the charges:
-    array charges = 2 * (af::randn(size, f64) - 1);
-    array &potential = T.getPotential(charges);
+    // // Array for the charges:
+    // array charges = 2 * (af::randn(size, f64) - 1);
+    // array &potential = T.getPotential(charges);
 
-    // // Direct evaluation:
-    cout << "Performing a direct evaluation using MatVec multiplication:" << endl;
-    array potential_direct = af::matmul(M.getArray(), charges);
-    potential_direct.eval();
-
-    cout << "=============ERROR IN THE CALCULATED POTENTIAL=============" << endl;
-    cout << "Absolute Error: " << af::norm(potential_direct - potential) << endl;
-    cout << "Relative Error: " << af::norm(potential_direct - potential) / af::norm(potential_direct) << endl;
     return 0;
 }
