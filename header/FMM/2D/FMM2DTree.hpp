@@ -143,17 +143,17 @@ array& FMM2DTree::getPotential(const array &charges)
     {
         cout << "Getting the charges at the nodes of the leaf level" << endl;
         FMM2DTree::assignLeafCharges();
-        cout << "Performing upward sweep to get charges" << endl;
-        FMM2DTree::upwardTraveral();
-        cout << "Performing M2L..." << endl;
+        // cout << "Performing upward sweep to get charges" << endl;
+        // FMM2DTree::upwardTraveral();
+        // cout << "Performing M2L..." << endl;
 
         if(this->is_homogeneous || this->is_log_homogeneous)
             FMM2DTree::evaluateAllM2LHomogeneous();
         else
             FMM2DTree::evaluateAllM2L();
 
-        cout << "Performing downward sweep" << endl;
-        FMM2DTree::downwardTraversal();
+        // cout << "Performing downward sweep" << endl;
+        // FMM2DTree::downwardTraversal();
         cout << "Getting potentials for particles using L2P" << endl;
         FMM2DTree::evaluateL2P();
     }
@@ -246,7 +246,7 @@ FMM2DTree::FMM2DTree(MatrixData &M, unsigned N_nodes, std::string nodes_type,
     child_nodes.eval();
     this->standard_nodes_child[3] = child_nodes;
 
-    if(radius == -1)
+    if(this->user_def_locations == true)
     {
         // Finding out the radius and center for the domain of consideration:
         determineCenterAndRadius((*(this->M_ptr->getSourceCoordsPtr()))(af::span, 0), this->c_x, this->r_x);
@@ -304,10 +304,11 @@ FMM2DTree::FMM2DTree(MatrixData &M, unsigned N_nodes, std::string nodes_type,
     FMM2DTree::assignTreeRelations();
     cout << "Getting M2L interactions..." << endl;
     
-    if(this->is_homogeneous || this->is_log_homogeneous)
-        FMM2DTree::getM2LInteractionsHomogeneous();
-    else
-        FMM2DTree::getM2LInteractions();
+    FMM2DTree::getM2LInteractions();
+    // if(this->is_homogeneous || this->is_log_homogeneous)
+    //     FMM2DTree::getM2LInteractionsHomogeneous();
+    // else
+    //     FMM2DTree::getM2LInteractions();
     
     if(this->user_def_locations == false)
     {
@@ -1183,23 +1184,25 @@ void FMM2DTree::assignLeafCharges()
     for(unsigned i = 0; i < this->number_of_boxes[this->max_levels]; i++)
     {   
         // Getting the box that is in consideration:
-        FMM2DBox &node = this->tree[this->max_levels][i];
+        FMM2DBox &box = this->tree[this->max_levels][i];
 
         array std_locations_x, std_locations_y;
         // Mapping onto the standard interval of [-1, 1]:
-        scalePoints(node.c_x, node.r_x, (*(this->M_ptr->getSourceCoordsPtr()))(node.inds_in_box, 0),
+        scalePoints(box.c_x, box.r_x, (*(this->M_ptr->getSourceCoordsPtr()))(box.inds_in_box, 0),
                     0, 1, std_locations_x
                    );
 
-        scalePoints(node.c_x, node.r_x, (*(this->M_ptr->getSourceCoordsPtr()))(node.inds_in_box, 1),
+        scalePoints(box.c_y, box.r_y, (*(this->M_ptr->getSourceCoordsPtr()))(box.inds_in_box, 1),
                     0, 1, std_locations_y
                    );
 
         // Getting the P2M operator which interpolates information from the particles to nodes:
-        array P2M_array = array(node.inds_in_box.elements(), N_nodes * N_nodes, f64);
+        array P2M_array = array(box.inds_in_box.elements(), N_nodes * N_nodes, f64);
         getL2L2D(std_locations_x, std_locations_y, this->standard_nodes_1d, P2M_array);
-        tree[this->max_levels][i].node_charges = af::matmul(P2M_array.T(), (*this->charges_ptr)(node.inds_in_box));
-        tree[this->max_levels][i].node_charges.eval();
+        box.node_charges = af::matmul(P2M_array.T(), 
+                                      (*this->charges_ptr)(box.inds_in_box)
+                                     );
+        box.node_charges.eval();
     }
 }
 
@@ -1388,21 +1391,21 @@ void FMM2DTree::evaluateL2P()
     for(unsigned i = 0; i < this->number_of_boxes[this->max_levels]; i++)
     {   
         // Getting the box that is in consideration:
-        FMM2DBox &node = this->tree[this->max_levels][i];
+        FMM2DBox &box = this->tree[this->max_levels][i];
 
         // Mapping onto the standard interval of [-1, 1]:
-        scalePoints(node.c_x, node.r_x, (*(this->M_ptr->getSourceCoordsPtr()))(node.inds_in_box, 0),
+        scalePoints(box.c_x, box.r_x, (*(this->M_ptr->getSourceCoordsPtr()))(box.inds_in_box, 0),
                     0, 1, std_locations_x
                    );
 
-        scalePoints(node.c_x, node.r_x, (*(this->M_ptr->getSourceCoordsPtr()))(node.inds_in_box, 1),
+        scalePoints(box.c_y, box.r_y, (*(this->M_ptr->getSourceCoordsPtr()))(box.inds_in_box, 1),
                     0, 1, std_locations_y
                    );
 
         // Getting the P2M operator:
-        array L2P = array(node.inds_in_box.elements(), N_nodes * N_nodes, f64);
+        array L2P = array(box.inds_in_box.elements(), N_nodes * N_nodes, f64);
         getL2L2D(std_locations_x, std_locations_y, this->standard_nodes_1d, L2P);
-        this->potentials(node.inds_in_box) = af::matmul(L2P, node.node_potentials);
+        this->potentials(box.inds_in_box) = af::matmul(L2P, box.node_potentials);
     }
 
     this->potentials.eval();
