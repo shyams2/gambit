@@ -418,6 +418,14 @@ void FMM2DTree::buildTree()
             // Assigning the new centers and radii:
             box.c_x = parent_node.c_x + (((i - 4 * box.parent) % 2) - 0.5) * parent_node.r_x;
             box.c_y = parent_node.c_y + (((i - 4 * box.parent) / 2) - 0.5) * parent_node.r_y;
+
+            if(i % 4 > 1)
+                box.c_x = parent_node.c_x - (((i - 4 * box.parent) % 2) - 0.5) * parent_node.r_x;
+
+            else
+                box.c_x = parent_node.c_x + (((i - 4 * box.parent) % 2) - 0.5) * parent_node.r_x;
+
+
             box.r_x = 0.5 * parent_node.r_x;
             box.r_y = 0.5 * parent_node.r_y;
 
@@ -486,7 +494,7 @@ void FMM2DTree::buildTree()
             box.nodes = af::join(1, locations_x, locations_y);
 
             // NOTE:Only being used for testing purposes
-            box.node_charges = af::randu(this->rank, f64);
+            box.node_charges = af::randn(this->rank, f64);
         }
     }
 }
@@ -1153,53 +1161,48 @@ void FMM2DTree::getNeighborSelfInteractions()
                           this->standard_nodes(af::span, 1) * r_y_leaf
                          );
 
-    // Finding interaction with boxes on the 
+    // Finding interaction with boxes on the bottom edge(N0 and N1):
     for(unsigned short i = 0; i < 2; i++)
     {
         nodes= af::join(1, (this->standard_nodes(af::span, 0) + 2 * (i - 1)) * r_x_leaf,
                         (this->standard_nodes(af::span, 1) - 2) * r_y_leaf
                        );
 
-        getM2L(leaf_nodes, nodes, *(this->M_ptr), M2L);
-        M2L.eval();
-        this->neighbor_interaction[i] = M2L;
+        this->neighbor_interaction[i] = this->M_ptr->buildArray(leaf_nodes, nodes);
     }
 
+    // Finding interaction with boxes on the right edge(N2 and N3):
     for(unsigned short i = 0; i < 2; i++)
     {
         nodes= af::join(1, (this->standard_nodes(af::span, 0) + 2) * r_x_leaf,
                         (this->standard_nodes(af::span, 1) + 2 * (i - 1)) * r_y_leaf
                        );
-        getM2L(leaf_nodes, nodes, *(this->M_ptr), M2L);
-        M2L.eval();
-        this->neighbor_interaction[i + 2] = M2L;
+
+        this->neighbor_interaction[i + 2] = this->M_ptr->buildArray(leaf_nodes, nodes);
     }
 
-
+    // Finding interaction with boxes on the top edge(N4 and N5):
     for(unsigned short i = 0; i < 2; i++)
     {
         nodes= af::join(1, (this->standard_nodes(af::span, 0) + 2 * (1 - i)) * r_x_leaf,
                         (this->standard_nodes(af::span, 1) + 2) * r_y_leaf
                        );
 
-        getM2L(this->standard_nodes, nodes, *(this->M_ptr), M2L);
-        M2L.eval();
-        this->neighbor_interaction[i + 4] = M2L;
+        this->neighbor_interaction[i + 4] = this->M_ptr->buildArray(leaf_nodes, nodes);
     }
 
+    // Finding interaction with boxes on the left edge(N6 and N7):
     for(unsigned short i = 0; i < 2; i++)
     {
         nodes= af::join(1, (this->standard_nodes(af::span, 0) - 2) * r_x_leaf,
                         (this->standard_nodes(af::span, 1) + 2 * (1 - i)) * r_y_leaf
                        );
 
-        getM2L(this->standard_nodes, nodes, *(this->M_ptr), M2L);
-        M2L.eval();
-        this->neighbor_interaction[i + 6] = M2L;
+        this->neighbor_interaction[i + 6] = this->M_ptr->buildArray(leaf_nodes, nodes);
     }
 
     // Getting self-interaction:
-    getM2L(leaf_nodes, leaf_nodes, *(this->M_ptr), this->self_interaction);
+    this->self_interaction = this->M_ptr->buildArray(leaf_nodes, leaf_nodes);
     this->self_interaction.eval();
 }
 
@@ -1484,16 +1487,16 @@ void FMM2DTree::evaluateLeafLevelInteractions()
             FMM2DBox &box = this->tree[this->max_levels][i];
             int N_neighbor;
 
+            // Initializing with zeros:
             box.node_potentials = af::constant(0, this->rank, f64);
+            // Looping over all possible neighbor boxes:
             for(unsigned j = 0; j < 8; j++) 
             {
-                N_neighbor = this->tree[this->max_levels][i].neighbor[j];
+                N_neighbor = box.neighbor[j];
                 if(N_neighbor > -1) 
                 {
                     FMM2DBox &neighbor_box = tree[this->max_levels][N_neighbor];
-                    // Updating the potentials for the particles in the box of consideration
-                    // by evaluating the direct interaction with the particles in the neighbor box
-
+                    // Evaluating the node potentials:
                     box.node_potentials += 
                     matmul(this->neighbor_interaction[j], neighbor_box.node_charges);
                 }
@@ -1517,6 +1520,8 @@ void FMM2DTree::checkPotentialInBox(int N_box)
     for(int i = 0; i < this->number_of_boxes[this->max_levels]; i++)
     {
         FMM2DBox &interacting_box = this->tree[this->max_levels][i];
+      
+
         potential += matmul(this->M_ptr->buildArray(box.nodes, interacting_box.nodes),
                             interacting_box.node_charges
                            );
