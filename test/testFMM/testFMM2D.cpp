@@ -34,7 +34,7 @@ int main(int argc, char** argv)
     MatrixData M(interaction_kernel);
 
     // We then will pass this to the FMM2D tree class:
-    FMM2DTree T(M, 3, "CHEBYSHEV", 1, 1);
+    FMM2DTree T(M, 15, "CHEBYSHEV", 5, 1);
     T.checkPotentialInBox(0);
 
     // // Array for the charges:
