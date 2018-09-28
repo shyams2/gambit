@@ -146,11 +146,12 @@ array& FMM2DTree::getPotential(const array &charges)
         cout << "Performing upward sweep to get charges" << endl;
         FMM2DTree::upwardTraveral();
         cout << "Performing M2L..." << endl;
-        // if(this->is_homogeneous || this->is_log_homogeneous)
-        //     FMM2DTree::evaluateAllM2LHomogeneous();
-        // else
-        //     FMM2DTree::evaluateAllM2L();
-        FMM2DTree::evaluateAllM2LHomogeneous();
+
+        if(this->is_homogeneous || this->is_log_homogeneous)
+            FMM2DTree::evaluateAllM2LHomogeneous();
+        else
+            FMM2DTree::evaluateAllM2L();
+
         cout << "Performing downward sweep" << endl;
         FMM2DTree::downwardTraversal();
         cout << "Getting potentials for particles using L2P" << endl;
@@ -301,7 +302,7 @@ FMM2DTree::FMM2DTree(MatrixData &M, unsigned N_nodes, std::string nodes_type,
     cout << "Number of Levels in the Tree: " << this->max_levels << endl;
     cout << "Assigning Relations Amongst Boxes in the tree..." << endl;
     FMM2DTree::assignTreeRelations();
-    cout << "Getting M2L interactions" << endl;
+    cout << "Getting M2L interactions..." << endl;
     
     if(this->is_homogeneous || this->is_log_homogeneous)
         FMM2DTree::getM2LInteractionsHomogeneous();
@@ -1016,10 +1017,11 @@ void FMM2DTree::getM2LInteractions()
         double r_x = this->tree[i][0].r_x;
         double r_y = this->tree[i][0].r_y;
 
-        // Scaling to the current level's box radii
-        scaled_standard_nodes = af::join(1, this->standard_nodes(af::span, 0) * r_x,
-                                         this->standard_nodes(af::span, 1) * r_y
-                                        );
+        // Scaling to the current level's box radii:
+        scaled_standard_nodes_x = this->standard_nodes(af::span, 0) * r_x;
+        scaled_standard_nodes_y = this->standard_nodes(af::span, 1) * r_y;
+
+        scaled_standard_nodes = af::join(1, scaled_standard_nodes_x, scaled_standard_nodes_y);
 
         // The M2L array transfers information from the
         // surrounding box to the box of concern:
@@ -1475,11 +1477,12 @@ void FMM2DTree::checkPotentialInBox(int N_box)
     cout << "Performing upward sweep to get charges" << endl;
     FMM2DTree::upwardTraveral();
     cout << "Performing M2L..." << endl;
-    FMM2DTree::evaluateAllM2LHomogeneous();
-    // if(this->is_homogeneous || this->is_log_homogeneous)
-    //     FMM2DTree::evaluateAllM2LHomogeneous();
-    // else
-    //     FMM2DTree::evaluateAllM2L();
+    
+    if(this->is_homogeneous || this->is_log_homogeneous)
+        FMM2DTree::evaluateAllM2LHomogeneous();
+    else
+        FMM2DTree::evaluateAllM2L();
+    
     cout << "Performing downward sweep" << endl;
     FMM2DTree::downwardTraversal();
     cout << "Computing Direct Interactions:" << endl;
