@@ -578,12 +578,13 @@ void FMM3DTree::assignTreeRelations()
             assignChild1Relations(N_level, N_box);
             assignChild2Relations(N_level, N_box);
             assignChild3Relations(N_level, N_box);
+            assignChild4Relations(N_level, N_box);
+            assignChild5Relations(N_level, N_box);
+            assignChild6Relations(N_level, N_box);
+            assignChild7Relations(N_level, N_box);
         }
     }
 }
-
-// For diagrams which elucidate the logic in the 
-// the following functions refer to https://goo.gl/TffP2B
 
 // Assigns the relations for child0 of a box
 void FMM3DTree::assignChild0Relations(int N_level, int N_box) 
@@ -591,14 +592,18 @@ void FMM3DTree::assignChild0Relations(int N_level, int N_box)
     // Level number for the child:
     int N_lc = N_level + 1;
     // Box number for the child:
-    int N_bc = 4 * N_box;
+    int N_bc = 8 * N_box;
     // Neighbor number in consideration:
     int N_neighbor;
 
     // Assign siblings
-    tree[N_lc][N_bc].neighbor[3] = N_bc + 1;
-    tree[N_lc][N_bc].neighbor[4] = N_bc + 2;
-    tree[N_lc][N_bc].neighbor[5] = N_bc + 3;
+    tree[N_lc][N_bc].neighbor[12] = N_bc + 1;
+    tree[N_lc][N_bc].neighbor[13] = N_bc + 2;
+    tree[N_lc][N_bc].neighbor[14] = N_bc + 3;
+    tree[N_lc][N_bc].neighbor[20] = N_bc + 4;
+    tree[N_lc][N_bc].neighbor[21] = N_bc + 5;
+    tree[N_lc][N_bc].neighbor[22] = N_bc + 6;
+    tree[N_lc][N_bc].neighbor[25] = N_bc + 7;
 
     // Assign children of parent's zeroth neighbor
     N_neighbor = tree[N_level][N_box].neighbor[0];
@@ -606,8 +611,12 @@ void FMM3DTree::assignChild0Relations(int N_level, int N_box)
     {
         tree[N_lc][N_bc].inner[0]    = tree[N_level][N_neighbor].children[0];
         tree[N_lc][N_bc].inner[1]    = tree[N_level][N_neighbor].children[1];
-        tree[N_lc][N_bc].neighbor[0] = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].inner[16]   = tree[N_level][N_neighbor].children[2];
         tree[N_lc][N_bc].inner[15]   = tree[N_level][N_neighbor].children[3];             
+        tree[N_lc][N_bc].inner[25]   = tree[N_level][N_neighbor].children[4];             
+        tree[N_lc][N_bc].inner[26]   = tree[N_level][N_neighbor].children[5];             
+        tree[N_lc][N_bc].neighbor[0] = tree[N_level][N_neighbor].children[6];
+        tree[N_lc][N_bc].inner[40]   = tree[N_level][N_neighbor].children[7];             
     }
 
     // Assign children of parent's first neighbor
@@ -616,8 +625,12 @@ void FMM3DTree::assignChild0Relations(int N_level, int N_box)
     {
         tree[N_lc][N_bc].inner[2]    = tree[N_level][N_neighbor].children[0];
         tree[N_lc][N_bc].inner[3]    = tree[N_level][N_neighbor].children[1];
-        tree[N_lc][N_bc].neighbor[2] = tree[N_level][N_neighbor].children[2];
-        tree[N_lc][N_bc].neighbor[1] = tree[N_level][N_neighbor].children[3];
+        tree[N_lc][N_bc].inner[18]   = tree[N_level][N_neighbor].children[2];
+        tree[N_lc][N_bc].inner[17]   = tree[N_level][N_neighbor].children[3];             
+        tree[N_lc][N_bc].inner[27]   = tree[N_level][N_neighbor].children[4];             
+        tree[N_lc][N_bc].inner[28]   = tree[N_level][N_neighbor].children[5];             
+        tree[N_lc][N_bc].neighbor[2] = tree[N_level][N_neighbor].children[6];
+        tree[N_lc][N_bc].neighbor[1] = tree[N_level][N_neighbor].children[7];
     }
 
     // Assign children of parent's second neighbor
