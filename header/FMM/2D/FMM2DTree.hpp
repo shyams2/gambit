@@ -138,28 +138,28 @@ array& FMM2DTree::getPotential(const array &charges)
 {
     this->charges_ptr = &charges;
     
-    // If there's only level, then only leaf-level evaluations are performed:
-    if(this->max_levels > 1)
-    {
-        cout << "Getting the charges at the nodes of the leaf level" << endl;
-        FMM2DTree::assignLeafCharges();
-        // cout << "Performing upward sweep to get charges" << endl;
-        // FMM2DTree::upwardTraveral();
-        // cout << "Performing M2L..." << endl;
+    // // If there's only level, then only leaf-level evaluations are performed:
+    // if(this->max_levels > 1)
+    // {
+    //     cout << "Getting the charges at the nodes of the leaf level" << endl;
+    //     FMM2DTree::assignLeafCharges();
+    //     cout << "Performing upward sweep to get charges" << endl;
+    //     FMM2DTree::upwardTraveral();
+    //     cout << "Performing M2L..." << endl;
 
-        if(this->is_homogeneous || this->is_log_homogeneous)
-            FMM2DTree::evaluateAllM2LHomogeneous();
-        else
-            FMM2DTree::evaluateAllM2L();
+    //     if(this->is_homogeneous || this->is_log_homogeneous)
+    //         FMM2DTree::evaluateAllM2LHomogeneous();
+    //     else
+    //         FMM2DTree::evaluateAllM2L();
 
-        // cout << "Performing downward sweep" << endl;
-        // FMM2DTree::downwardTraversal();
-        cout << "Getting potentials for particles using L2P" << endl;
-        FMM2DTree::evaluateL2P();
-    }
+    //     cout << "Performing downward sweep" << endl;
+    //     FMM2DTree::downwardTraversal();
+    //     cout << "Getting potentials for particles using L2P" << endl;
+    //     FMM2DTree::evaluateL2P();
+    // }
 
-    cout << "Evaluation the direct interactions at the leaf levels" << endl;
-    FMM2DTree::evaluateLeafLevelInteractions();
+    // cout << "Evaluation the direct interactions at the leaf levels" << endl;
+    // FMM2DTree::evaluateLeafLevelInteractions();
 
     this->potentials.eval();
     return this->potentials;
@@ -304,13 +304,12 @@ FMM2DTree::FMM2DTree(MatrixData &M, unsigned N_nodes, std::string nodes_type,
     FMM2DTree::assignTreeRelations();
     cout << "Getting M2L interactions..." << endl;
     
-    FMM2DTree::getM2LInteractions();
-    // if(this->is_homogeneous || this->is_log_homogeneous)
-    //     FMM2DTree::getM2LInteractionsHomogeneous();
-    // else
-    //     FMM2DTree::getM2LInteractions();
+    if(this->is_homogeneous || this->is_log_homogeneous)
+        FMM2DTree::getM2LInteractionsHomogeneous();
+    else
+        FMM2DTree::getM2LInteractions();
     
-    if(this->user_def_locations == false)
+    // if(this->user_def_locations == false)
     {
         cout << "Getting neighbor and interaction operators" << endl;
         FMM2DTree::getNeighborSelfInteractions();
@@ -479,7 +478,7 @@ void FMM2DTree::buildTree()
     if(this->max_levels == 0)
         this->max_levels = N_level;
 
-    if(this->user_def_locations == false)
+    // if(this->user_def_locations == false)
     {
         // Finding the location of the leaf nodes:
         for(int i = 0; i < this->number_of_boxes[this->max_levels]; i++)
@@ -499,7 +498,7 @@ void FMM2DTree::buildTree()
             box.nodes = af::join(1, locations_x, locations_y);
 
             // NOTE:Only being used for testing purposes
-            box.node_charges = af::randn(this->rank, f64);
+            // box.node_charges = af::randn(this->rank, f64);
         }
     }
 }
@@ -1413,40 +1412,40 @@ void FMM2DTree::evaluateL2P()
 
 void FMM2DTree::evaluateLeafLevelInteractions()
 {
-    if(this->user_def_locations == true)
-    {
-        // Looping over the boxes at the leaf level:
-        for(unsigned i = 0; i < this->number_of_boxes[this->max_levels]; i++)
-        {   
-            // Getting the box that is in consideration:
-            FMM2DBox &box = this->tree[this->max_levels][i];
-            int N_neighbor;
-            array targets = (*(this->M_ptr->getSourceCoordsPtr()))(box.inds_in_box, af::span);
+    // if(this->user_def_locations == true)
+    // {
+    //     // Looping over the boxes at the leaf level:
+    //     for(unsigned i = 0; i < this->number_of_boxes[this->max_levels]; i++)
+    //     {   
+    //         // Getting the box that is in consideration:
+    //         FMM2DBox &box = this->tree[this->max_levels][i];
+    //         int N_neighbor;
+    //         array targets = (*(this->M_ptr->getSourceCoordsPtr()))(box.inds_in_box, af::span);
 
-            for(unsigned j = 0; j < 8; j++) 
-            {
-                N_neighbor = this->tree[this->max_levels][i].neighbor[j];
+    //         for(unsigned j = 0; j < 8; j++) 
+    //         {
+    //             N_neighbor = this->tree[this->max_levels][i].neighbor[j];
         
-                if(N_neighbor > -1) 
-                {
-                    FMM2DBox &neighbor_box = tree[this->max_levels][N_neighbor];
-                    array sources = (*(this->M_ptr->getSourceCoordsPtr()))(neighbor_box.inds_in_box, af::span);
-                    array charges = (*(this->charges_ptr))(neighbor_box.inds_in_box);
-                    // Updating the potentials for the particles in the box of consideration
-                    // by evaluating the direct interaction with the particles in the neighbor box
-                    this->potentials(box.inds_in_box) +=
-                    af::matmul(this->M_ptr->buildArray(targets, sources), charges);
-                }
-            }
+    //             if(N_neighbor > -1) 
+    //             {
+    //                 FMM2DBox &neighbor_box = tree[this->max_levels][N_neighbor];
+    //                 array sources = (*(this->M_ptr->getSourceCoordsPtr()))(neighbor_box.inds_in_box, af::span);
+    //                 array charges = (*(this->charges_ptr))(neighbor_box.inds_in_box);
+    //                 // Updating the potentials for the particles in the box of consideration
+    //                 // by evaluating the direct interaction with the particles in the neighbor box
+    //                 this->potentials(box.inds_in_box) +=
+    //                 af::matmul(this->M_ptr->buildArray(targets, sources), charges);
+    //             }
+    //         }
 
-            // Self interaction:
-            array charges = (*(this->charges_ptr))(box.inds_in_box);
-            this->potentials(box.inds_in_box) +=
-            af::matmul(this->M_ptr->buildArray(targets, targets),charges);
-        }
-    }
+    //         // Self interaction:
+    //         array charges = (*(this->charges_ptr))(box.inds_in_box);
+    //         this->potentials(box.inds_in_box) +=
+    //         af::matmul(this->M_ptr->buildArray(targets, targets),charges);
+    //     }
+    // }
 
-    else
+    // else
     {
         // Looping over the boxes at the leaf level:
         for(unsigned i = 0; i < this->number_of_boxes[this->max_levels]; i++)
@@ -1477,6 +1476,8 @@ void FMM2DTree::evaluateLeafLevelInteractions()
 
 void FMM2DTree::checkPotentialInBox(int N_box)
 {
+    cout << "Getting the charges at the nodes of the leaf level" << endl;
+    FMM2DTree::assignLeafCharges();
     cout << "Performing upward sweep to get charges" << endl;
     FMM2DTree::upwardTraveral();
     cout << "Performing M2L..." << endl;
@@ -1494,6 +1495,10 @@ void FMM2DTree::checkPotentialInBox(int N_box)
     // Evaluating the direct potentials:
     array potential = af::constant(0, this->rank, f64);
     FMM2DBox &box = this->tree[this->max_levels][N_box];
+
+    // Getting the P2M operator:
+    array L2P = array(box.inds_in_box.elements(), N_nodes * N_nodes, f64);
+    getL2L2D(std_locations_x, std_locations_y, this->standard_nodes_1d, L2P);
 
     for(int i = 0; i < this->number_of_boxes[this->max_levels]; i++)
     {
