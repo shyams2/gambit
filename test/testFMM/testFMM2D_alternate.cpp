@@ -42,17 +42,16 @@ int main(int argc, char** argv)
     FMM2DTree T(M, 12, "CHEBYSHEV");
 
     // Array for the charges:
-    array charges = af::randn(size, f64);
+    array charges = af::constant(1, size, f64);
     array &potential = T.getPotential(charges);
-    T.checkPotentialInBox(0);
     
-    // // Direct evaluation:
-    // cout << "Performing a direct evaluation using MatVec multiplication:" << endl;
-    // array potential_direct = af::matmul(M.getArray(), charges);
-    // potential_direct.eval();
+    // Direct evaluation:
+    cout << "Performing a direct evaluation using MatVec multiplication:" << endl;
+    array potential_direct = af::matmul(M.getArray(), charges);
+    potential_direct.eval();
 
-    // cout << "=============ERROR IN THE CALCULATED POTENTIAL=============" << endl;
-    // cout << "Absolute Error: " << af::norm(potential_direct - potential) << endl;
-    // cout << "Relative Error: " << af::norm(potential_direct - potential) / af::norm(potential_direct) << endl;
+    cout << "=============ERROR IN THE CALCULATED POTENTIAL=============" << endl;
+    cout << "Absolute Error: " << af::norm(potential_direct - potential) << endl;
+    cout << "Relative Error: " << af::norm(potential_direct - potential) / af::norm(potential_direct) << endl;
     return 0;
 }

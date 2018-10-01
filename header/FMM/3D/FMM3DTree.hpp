@@ -44,7 +44,7 @@ private:
     std::array<af::array, 8> M2M;                      // M2M operators from the children to the parent
     std::vector<std::array<af::array, 98>> M2L_inner;  // M2L operators from the inner well separated clusters
     std::vector<std::array<af::array, 218>> M2L_outer; // M2L operators from the outer well separated clusters
-    std::vector<std::vector<FMM2DBox>> tree;           // The tree storing all the information.
+    std::vector<std::vector<FMM3DBox>> tree;           // The tree storing all the information.
 
     // The following operators are used when the charges at 
     // the leaf level are placed at the standard nodes:
@@ -409,7 +409,7 @@ void FMM3DTree::buildTree()
     // Box at the root level. This box will contain all the particles
     // under consideration. This is the box that will now be recursively
     // subdivided until the smallest box only contains 8 * N_nodes^2 particles
-    FMM2DBox root;
+    FMM3DBox root;
 
     root.N_box   =  0; // only box on it's level
     root.N_level =  0; // root is always on level 0
@@ -438,7 +438,7 @@ void FMM3DTree::buildTree()
     root.r_z = this->r_z;
 
     // Pushing back the data onto the tree variable:
-    std::vector<FMM2DBox> root_level;
+    std::vector<FMM3DBox> root_level;
     root_level.push_back(root);
     tree.push_back(root_level);
 
@@ -468,18 +468,18 @@ void FMM3DTree::buildTree()
                                                 );
         }
 
-        std::vector<FMM2DBox> level;
+        std::vector<FMM3DBox> level;
         level.reserve(this->number_of_boxes[N_level]);
         for(unsigned i = 0; i < this->number_of_boxes[N_level]; i++) 
         {
-            FMM2DBox box;
+            FMM3DBox box;
             box.N_level = N_level;
             box.N_box   = i;
             box.parent  = i / 8;
             // Initializing the value for the potentials:
             box.node_potentials = af::constant(0, this->rank, f64);
 
-            FMM2DBox &parent_node = (tree.back())[box.parent];
+            FMM3DBox &parent_node = (tree.back())[box.parent];
 
             // Assigning the new centers and radii:
             box.c_x = parent_node.c_x + (((i - 4 * box.parent) % 2) - 0.5) * parent_node.r_x;
@@ -546,7 +546,7 @@ void FMM3DTree::buildTree()
         for(int i = 0; i < this->number_of_boxes[this->max_levels]; i++)
         {
             // Finding the x and y coordinates:
-            FMM2DBox &box = this->tree[this->max_levels][i];
+            FMM3DBox &box = this->tree[this->max_levels][i];
             array locations_x, locations_y;
 
             scalePoints(0, 1, this->standard_nodes(af::span, 0),
@@ -982,94 +982,238 @@ void FMM3DTree::assignChild3Relations(int N_level, int N_box)
     }
 }
 
+array FMM3DTree::getOperator(double x_shift, double y_shift, double z_shift,
+                             double r_x, double r_y, double r_z
+                            )
+{
+    target_nodes = af::join(1, this->standard_nodes(af::span, 0) * r_x_leaf,
+                            this->standard_nodes(af::span, 1) * r_y_leaf,
+                            this->standard_nodes(af::span, 2) * r_z_leaf,
+                           );
+
+    nodes= af::join(1, (this->standard_nodes(af::span, 0) + x_shift) * r_x_leaf,
+                    (this->standard_nodes(af::span, 1) + y_shift) * r_y_leaf,
+                    (this->standard_nodes(af::span, 2) + z_shift) * r_y_leaf,
+                   );
+
+    return this->M_ptr->buildArray(target_nodes, nodes);
+}
+
 void FMM3DTree::getM2LInteractionsHomogeneous() 
 {
-    std::array<array, 24> M2L_outer_homogeneous;
-    std::array<array, 16> M2L_inner_homogeneous;
+    std::array<array, 218> M2L_outer_homogeneous;
+    std::array<array, 98> M2L_inner_homogeneous;
 
     array M2L, nodes;
     // The M2L array transfers information from the
     // surrounding box to the box of concern:
     // ============= Getting outer interations ============================
-    // Getting interaction between boxes on the lower edge:
-    for(unsigned i = 0; i < 6; i++)
+    // Iterating over the layers in z:
+    unsigned short J = 0;
+    for(unsigned short j = 0; j < 7; j++)
     {
-        nodes= af::join(1, this->standard_nodes(af::span, 0) + 2 * (i - 3),
-                        this->standard_nodes(af::span, 1) - 6
-                       );
+        // Offset to account for level in z:
+        if(j == 1)
+            J = 49;
+        else if(j > 1)
+            J += 24;
 
-        M2L_outer_homogeneous[i] = this->M_ptr->buildArray(this->standard_nodes, nodes);
+        // Getting interaction between boxes on the lower edge:
+        for(unsigned i = 0; i < 6; i++)
+        {
+            M2L_outer_homogeneous[i + J] = FMM3DTree::getOperator(2 * (i - 3), -6, 2 * (j - 3), 
+                                                                  1, 1, 1
+                                                                 );
+        }
+
+        // Getting interaction between boxes on the right edge:
+        for(unsigned i = 0; i < 6; i++)
+        {
+            M2L_outer_homogeneous[i + J + 6] = FMM3DTree::getOperator(6, 2 * (i - 3), 2 * (j - 3), 
+                                                                      1, 1, 1
+                                                                     );
+        }
+
+        // Getting interaction between boxes on the top edge:
+        for(unsigned i = 0; i < 6; i++)
+        {
+            M2L_outer_homogeneous[i + J + 12] = FMM3DTree::getOperator(2 * (3 - i), 6, 2 * (j - 3), 
+                                                                       1, 1, 1
+                                                                      );
+        }
+
+        // Getting interaction between boxes on the left edge:
+        for(unsigned i = 0; i < 6; i++)
+        {
+            M2L_outer_homogeneous[i + J + 18] = FMM3DTree::getOperator(-6, 2 * (3 - i), 2 * (j - 3), 
+                                                                       1, 1, 1
+                                                                      );
+        }
     }
 
-    // Getting interaction between boxes on the right edge:
-    for(unsigned i = 0; i < 6; i++)
+    // Assigning missed out boxes at the front and back:
+    // k is used to toggle between the backmost(k = 0) and frontmost(k = 1):
+    for(unsigned short k = 0; k < 2; k++)
     {
-        nodes= af::join(1, this->standard_nodes(af::span, 0) + 6,
-                        this->standard_nodes(af::span, 1) + 2 * (i - 3)
-                       );
+        // For the 2nd inner ring:
+        J = 24 + 169 * k
+        // Getting interaction between boxes on the lower edge:
+        for(unsigned i = 0; i < 4; i++)
+        {
+            M2L_outer_homogeneous[i + J] = FMM3DTree::getOperator(2 * (i - 2), -4, -6 + 12 * k, 
+                                                                  1, 1, 1
+                                                                 );
+        }
 
-        M2L_outer_homogeneous[i + 6] = this->M_ptr->buildArray(this->standard_nodes, nodes);
-    }
+        // Getting interaction between boxes on the right edge:
+        for(unsigned i = 0; i < 4; i++)
+        {
+            M2L_outer_homogeneous[i + J + 4] = FMM3DTree::getOperator(4, 2 * (i - 2), -6 + 12 * k, 
+                                                                      1, 1, 1
+                                                                     );
+        }
 
-    // Getting interaction between boxes on the top edge:
-    for(unsigned i = 0; i < 6; i++)
-    {
-        nodes= af::join(1, this->standard_nodes(af::span, 0) + 2 * (3 - i),
-                        this->standard_nodes(af::span, 1) + 6
-                       );
+        // Getting interaction between boxes on the top edge:
+        for(unsigned i = 0; i < 4; i++)
+        {
+            M2L_outer_homogeneous[i + J + 8] = FMM3DTree::getOperator(2 * (2 - i), 4, -6 + 12 * k, 
+                                                                      1, 1, 1
+                                                                     );
+        }
 
-        M2L_outer_homogeneous[i + 12] = this->M_ptr->buildArray(this->standard_nodes, nodes);
-    }
+        // Getting interaction between boxes on the left edge:
+        for(unsigned i = 0; i < 4; i++)
+        {
+            M2L_outer_homogeneous[i + J + 12] = FMM3DTree::getOperator(-4, 2 * (2 - i), -6 + 12 * k, 
+                                                                       1, 1, 1
+                                                                      );
+        }
 
-    // Getting interaction between boxes on the left edge:
-    for(unsigned i = 0; i < 6; i++)
-    {
-        nodes= af::join(1, this->standard_nodes(af::span, 0) - 6,
-                        this->standard_nodes(af::span, 1) + 2 * (3 - i)
-                       );
+        // For the 3rd inner ring:
+        J = 40 + 169 * k
+        // Getting interaction between boxes on the lower edge:
+        for(unsigned i = 0; i < 2; i++)
+        {
+            M2L_outer_homogeneous[i + J] = FMM3DTree::getOperator(2 * (i - 1), -2, -6 + 12 * k, 
+                                                                  1, 1, 1
+                                                                 );
+        }
 
-        M2L_outer_homogeneous[i + 18] = this->M_ptr->buildArray(this->standard_nodes, nodes);
+        // Getting interaction between boxes on the right edge:
+        for(unsigned i = 0; i < 2; i++)
+        {
+            M2L_outer_homogeneous[i + J + 2] = FMM3DTree::getOperator(2, 2 * (i - 1), -6 + 12 * k, 
+                                                                      1, 1, 1
+                                                                     );
+        }
+
+        // Getting interaction between boxes on the top edge:
+        for(unsigned i = 0; i < 2; i++)
+        {
+            M2L_outer_homogeneous[i + J + 4] = FMM3DTree::getOperator(2 * (1 - i), 2, -6 + 12 * k, 
+                                                                      1, 1, 1
+                                                                     );
+        }
+        
+        // Getting interaction between boxes on the left edge:
+        for(unsigned i = 0; i < 2; i++)
+        {
+            M2L_outer_homogeneous[i + J + 6] = FMM3DTree::getOperator(-2, 2 * (1 - i), -6 + 12 * k, 
+                                                                      1, 1, 1
+                                                                     );
+        }
+
+        // For the centerpiece:
+        M2L_outer_homogeneous[J + 48] = FMM3DTree::getOperator(0, 0, -6 + 12 * k, 
+                                                               1, 1, 1
+                                                              );
     }
 
     // ============= Getting inner interations ============================
-    // Getting interaction between boxes on the lower edge:
-    for(unsigned i = 0; i < 4; i++)
+    J = 0;
+    for(unsigned short j = 0; j < 5; j++)
     {
-        nodes= af::join(1, this->standard_nodes(af::span, 0) + 2 * (i - 2),
-                        this->standard_nodes(af::span, 1) - 4
-                       );
+        // Offset to account for level in z:
+        if(j == 1)
+            J = 25;
+        else if(j > 1)
+            J += 16;
 
-        M2L_inner_homogeneous[i] = this->M_ptr->buildArray(this->standard_nodes, nodes);
+        // Getting interaction between boxes on the lower edge:
+        for(unsigned i = 0; i < 4; i++)
+        {
+            M2L_inner_homogeneous[i + J] = FMM3DTree::getOperator(2 * (i - 2), -4, 2 * (j - 2), 
+                                                                  1, 1, 1
+                                                                 );
+        }
+
+        // Getting interaction between boxes on the right edge:
+        for(unsigned i = 0; i < 4; i++)
+        {
+            M2L_inner_homogeneous[i + J + 4] = FMM3DTree::getOperator(4, 2 * (i - 2), 2 * (j - 2), 
+                                                                      1, 1, 1
+                                                                     );
+        }
+
+        // Getting interaction between boxes on the top edge:
+        for(unsigned i = 0; i < 4; i++)
+        {
+            M2L_inner_homogeneous[i + J + 8] = FMM3DTree::getOperator(2 * (2 - i), 4, 2 * (j - 2), 
+                                                                       1, 1, 1
+                                                                      );
+        }
+
+        // Getting interaction between boxes on the left edge:
+        for(unsigned i = 0; i < 4; i++)
+        {
+            M2L_inner_homogeneous[i + J + 12] = FMM3DTree::getOperator(-4, 2 * (2 - i), 2 * (j - 2), 
+                                                                       1, 1, 1
+                                                                      );
+        }
     }
 
-    // Getting interaction between boxes on the right edge:
-    for(unsigned i = 0; i < 4; i++)
+    // Assigning missed out boxes at the front and back:
+    // k is used to toggle between the backmost(k = 0) and frontmost(k = 1):
+    for(unsigned short k = 0; k < 2; k++)
     {
-        nodes= af::join(1, this->standard_nodes(af::span, 0) + 4,
-                        this->standard_nodes(af::span, 1) + 2 * (i - 2)
-                       );
+        // For the 2nd inner ring:
+        J = 16 + 73 * k
+        // Getting interaction between boxes on the lower edge:
+        for(unsigned i = 0; i < 2; i++)
+        {
+            M2L_inner_homogeneous[i + J] = FMM3DTree::getOperator(2 * (i - 1), -2, -4 + 8 * k, 
+                                                                  1, 1, 1
+                                                                 );
+        }
 
-        M2L_inner_homogeneous[i + 4] = this->M_ptr->buildArray(this->standard_nodes, nodes);
-    }
+        // Getting interaction between boxes on the right edge:
+        for(unsigned i = 0; i < 2; i++)
+        {
+            M2L_inner_homogeneous[i + J + 2] = FMM3DTree::getOperator(2, 2 * (i - 1), -4 + 8 * k, 
+                                                                      1, 1, 1
+                                                                     );
+        }
 
-    // Getting interaction between boxes on the top edge:
-    for(unsigned i = 0; i < 4; i++)
-    {
-        nodes= af::join(1, this->standard_nodes(af::span, 0) + 2 * (2 - i),
-                        this->standard_nodes(af::span, 1) + 4
-                       );
+        // Getting interaction between boxes on the top edge:
+        for(unsigned i = 0; i < 2; i++)
+        {
+            M2L_inner_homogeneous[i + J + 4] = FMM3DTree::getOperator(2 * (1 - i), 2, -4 + 8 * k, 
+                                                                      1, 1, 1
+                                                                     );
+        }
+        
+        // Getting interaction between boxes on the left edge:
+        for(unsigned i = 0; i < 2; i++)
+        {
+            M2L_inner_homogeneous[i + J + 6] = FMM3DTree::getOperator(-2, 2 * (1 - i), -4 + 8 * k, 
+                                                                      1, 1, 1
+                                                                     );
+        }
 
-        M2L_inner_homogeneous[i + 8] = this->M_ptr->buildArray(this->standard_nodes, nodes);
-    }
-
-    // Getting interaction between boxes on the left edge:
-    for(unsigned i = 0; i < 4; i++)
-    {
-        nodes= af::join(1, this->standard_nodes(af::span, 0) - 4,
-                        this->standard_nodes(af::span, 1) + 2 * (2 - i)
-                       );
-
-        M2L_inner_homogeneous[i + 12] = this->M_ptr->buildArray(this->standard_nodes, nodes);
+        // For the centerpiece:
+        M2L_inner_homogeneous[J + 24] = FMM3DTree::getOperator(0, 0, -4 + 8 * k, 
+                                                               1, 1, 1
+                                                              );
     }
 
     this->M2L_outer.push_back(M2L_outer_homogeneous);
@@ -1079,10 +1223,10 @@ void FMM3DTree::getM2LInteractionsHomogeneous()
 void FMM3DTree::getM2LInteractions() 
 {
     // M2L inner and outer operators for a single level:
-    std::array<array, 24> M2L_outer_level;
-    std::array<array, 16> M2L_inner_level;
+    std::array<array, 218> M2L_outer_level;
+    std::array<array, 98> M2L_inner_level;
 
-    array M2L, nodes, scaled_standard_nodes_x, scaled_standard_nodes_y, scaled_standard_nodes;
+    array M2L, nodes, scaled_standard_nodes_x, scaled_standard_nodes_y, scaled_standard_nodes_z, scaled_standard_nodes;
     // Starting at L2 since only from then onwards do we have interaction lists:
     for(unsigned i = 2; i <= this->max_levels; i++)
     {
@@ -1091,97 +1235,227 @@ void FMM3DTree::getM2LInteractions()
         // (Box number doesn't matter since we're using a uniform tree)
         double r_x = this->tree[i][0].r_x;
         double r_y = this->tree[i][0].r_y;
+        double r_z = this->tree[i][0].r_z;
 
         // Scaling to the current level's box radii:
         scaled_standard_nodes_x = this->standard_nodes(af::span, 0) * r_x;
         scaled_standard_nodes_y = this->standard_nodes(af::span, 1) * r_y;
+        scaled_standard_nodes_z = this->standard_nodes(af::span, 2) * r_z;
 
-        scaled_standard_nodes = af::join(1, scaled_standard_nodes_x, scaled_standard_nodes_y);
+        scaled_standard_nodes = af::join(1, scaled_standard_nodes_x, 
+                                         scaled_standard_nodes_y,
+                                         scaled_standard_nodes_z
+                                        );
 
         // The M2L array transfers information from the
         // surrounding box to the box of concern:
         // ============= Getting outer interations ============================
-        // Getting interaction between boxes on the lower edge:
-        for(unsigned i = 0; i < 6; i++)
+        // Iterating over the layers in z:
+        unsigned short J = 0;
+        for(unsigned short j = 0; j < 7; j++)
         {
-            nodes= af::join(1, scaled_standard_nodes_x + 2 * r_x * (i - 3),
-                            scaled_standard_nodes_y - 6 * r_y
-                           );
-    
-            M2L_outer_level[i] = this->M_ptr->buildArray(scaled_standard_nodes, nodes);
+            // Offset to account for level in z:
+            if(j == 1)
+                J = 49;
+            else if(j > 1)
+                J += 24;
+
+            // Getting interaction between boxes on the lower edge:
+            for(unsigned i = 0; i < 6; i++)
+            {
+                M2L_outer_level[i + J] = FMM3DTree::getOperator(2 * (i - 3), -6, 2 * (j - 3), 
+                                                                r_x, r_y, r_z
+                                                               );
+            }
+
+            // Getting interaction between boxes on the right edge:
+            for(unsigned i = 0; i < 6; i++)
+            {
+                M2L_outer_level[i + J + 6] = FMM3DTree::getOperator(6, 2 * (i - 3), 2 * (j - 3), 
+                                                                    r_x, r_y, r_z
+                                                                   );
+            }
+
+            // Getting interaction between boxes on the top edge:
+            for(unsigned i = 0; i < 6; i++)
+            {
+                M2L_outer_level[i + J + 12] = FMM3DTree::getOperator(2 * (3 - i), 6, 2 * (j - 3), 
+                                                                     r_x, r_y, r_z
+                                                                    );
+            }
+
+            // Getting interaction between boxes on the left edge:
+            for(unsigned i = 0; i < 6; i++)
+            {
+                M2L_outer_level[i + J + 18] = FMM3DTree::getOperator(-6, 2 * (3 - i), 2 * (j - 3), 
+                                                                     r_x, r_y, r_z
+                                                                    );
+            }
         }
 
-        // Getting interaction between boxes on the right edge:
-        for(unsigned i = 0; i < 6; i++)
+        // Assigning missed out boxes at the front and back:
+        // k is used to toggle between the backmost(k = 0) and frontmost(k = 1):
+        for(unsigned short k = 0; k < 2; k++)
         {
-            nodes= af::join(1, scaled_standard_nodes_x + 6 * r_x,
-                            scaled_standard_nodes_y + 2 * r_y * (i - 3)
-                           );
+            // For the 2nd inner ring:
+            J = 24 + 169 * k
+            // Getting interaction between boxes on the lower edge:
+            for(unsigned i = 0; i < 4; i++)
+            {
+                M2L_outer_level[i + J] = FMM3DTree::getOperator(2 * (i - 2), -4, -6 + 12 * k, 
+                                                                r_x, r_y, r_z
+                                                               );
+            }
 
-            M2L_outer_level[i + 6] = this->M_ptr->buildArray(scaled_standard_nodes, nodes);
+            // Getting interaction between boxes on the right edge:
+            for(unsigned i = 0; i < 4; i++)
+            {
+                M2L_outer_level[i + J + 4] = FMM3DTree::getOperator(4, 2 * (i - 2), -6 + 12 * k, 
+                                                                    r_x, r_y, r_z
+                                                                   );
+            }
+
+            // Getting interaction between boxes on the top edge:
+            for(unsigned i = 0; i < 4; i++)
+            {
+                M2L_outer_level[i + J + 8] = FMM3DTree::getOperator(2 * (2 - i), 4, -6 + 12 * k, 
+                                                                    r_x, r_y, r_z
+                                                                   );
+            }
+
+            // Getting interaction between boxes on the left edge:
+            for(unsigned i = 0; i < 4; i++)
+            {
+                M2L_outer_level[i + J + 12] = FMM3DTree::getOperator(-4, 2 * (2 - i), -6 + 12 * k, 
+                                                                     r_x, r_y, r_z
+                                                                    );
+            }
+
+            // For the 3rd inner ring:
+            J = 40 + 169 * k
+            // Getting interaction between boxes on the lower edge:
+            for(unsigned i = 0; i < 2; i++)
+            {
+                M2L_outer_level[i + J] = FMM3DTree::getOperator(2 * (i - 1), -2, -6 + 12 * k, 
+                                                                r_x, r_y, r_z
+                                                               );
+            }
+
+            // Getting interaction between boxes on the right edge:
+            for(unsigned i = 0; i < 2; i++)
+            {
+                M2L_outer_level[i + J + 2] = FMM3DTree::getOperator(2, 2 * (i - 1), -6 + 12 * k, 
+                                                                    r_x, r_y, r_z
+                                                                   );
+            }
+
+            // Getting interaction between boxes on the top edge:
+            for(unsigned i = 0; i < 2; i++)
+            {
+                M2L_outer_level[i + J + 4] = FMM3DTree::getOperator(2 * (1 - i), 2, -6 + 12 * k, 
+                                                                    r_x, r_y, r_z
+                                                                   );
+            }
+            
+            // Getting interaction between boxes on the left edge:
+            for(unsigned i = 0; i < 2; i++)
+            {
+                M2L_outer_level[i + J + 6] = FMM3DTree::getOperator(-2, 2 * (1 - i), -6 + 12 * k, 
+                                                                    r_x, r_y, r_z
+                                                                   );
+            }
+
+            // For the centerpiece:
+            M2L_outer_level[J + 48] = FMM3DTree::getOperator(0, 0, -6 + 12 * k, 
+                                                             r_x, r_y, r_z
+                                                            );
         }
-
-        // Getting interaction between boxes on the top edge:
-        for(unsigned i = 0; i < 6; i++)
-        {
-            nodes= af::join(1, scaled_standard_nodes_x + 2 * r_x * (3 - i),
-                            scaled_standard_nodes_y + 6 * r_y
-                           );
-
-            M2L_outer_level[i + 12] = this->M_ptr->buildArray(scaled_standard_nodes, nodes);
-        }
-
-        // Getting interaction between boxes on the left edge:
-        for(unsigned i = 0; i < 6; i++)
-        {
-            nodes= af::join(1, scaled_standard_nodes_x - 6 * r_x,
-                            scaled_standard_nodes_y + 2 * r_y * (3 - i)
-                           );
-
-            M2L_outer_level[i + 18] = this->M_ptr->buildArray(scaled_standard_nodes, nodes);
-        }
-
-        // ====================================================================
 
         // ============= Getting inner interations ============================
-        // Getting interaction between boxes on the lower edge:
-        for(unsigned i = 0; i < 4; i++)
+        J = 0;
+        for(unsigned short j = 0; j < 5; j++)
         {
-            nodes= af::join(1, scaled_standard_nodes_x + 2 * r_x * (i - 2),
-                            scaled_standard_nodes_y - 4 * r_y
-                           );
+            // Offset to account for level in z:
+            if(j == 1)
+                J = 25;
+            else if(j > 1)
+                J += 16;
 
-            M2L_inner_level[i] = this->M_ptr->buildArray(scaled_standard_nodes, nodes);
+            // Getting interaction between boxes on the lower edge:
+            for(unsigned i = 0; i < 4; i++)
+            {
+                M2L_inner_level[i + J] = FMM3DTree::getOperator(2 * (i - 2), -4, 2 * (j - 2), 
+                                                                r_x, r_y, r_z
+                                                               );
+            }
+
+            // Getting interaction between boxes on the right edge:
+            for(unsigned i = 0; i < 4; i++)
+            {
+                M2L_inner_level[i + J + 4] = FMM3DTree::getOperator(4, 2 * (i - 2), 2 * (j - 2), 
+                                                                    r_x, r_y, r_z
+                                                                   );
+            }
+
+            // Getting interaction between boxes on the top edge:
+            for(unsigned i = 0; i < 4; i++)
+            {
+                M2L_inner_level[i + J + 8] = FMM3DTree::getOperator(2 * (2 - i), 4, 2 * (j - 2), 
+                                                                    r_x, r_y, r_z
+                                                                   );
+            }
+
+            // Getting interaction between boxes on the left edge:
+            for(unsigned i = 0; i < 4; i++)
+            {
+                M2L_inner_level[i + J + 12] = FMM3DTree::getOperator(-4, 2 * (2 - i), 2 * (j - 2), 
+                                                                     r_x, r_y, r_z
+                                                                    );
+            }
         }
 
-        // Getting interaction between boxes on the right edge:
-        for(unsigned i = 0; i < 4; i++)
+        // Assigning missed out boxes at the front and back:
+        // k is used to toggle between the backmost(k = 0) and frontmost(k = 1):
+        for(unsigned short k = 0; k < 2; k++)
         {
-            nodes= af::join(1, scaled_standard_nodes_x + 4 * r_x,
-                            scaled_standard_nodes_y + 2 * r_y * (i - 2)
-                           );
+            // For the 2nd inner ring:
+            J = 16 + 73 * k
+            // Getting interaction between boxes on the lower edge:
+            for(unsigned i = 0; i < 2; i++)
+            {
+                M2L_inner_level[i + J] = FMM3DTree::getOperator(2 * (i - 1), -2, -4 + 8 * k, 
+                                                                r_x, r_y, r_z
+                                                               );
+            }
 
-            M2L_inner_level[i + 4] = this->M_ptr->buildArray(scaled_standard_nodes, nodes);
-        }
+            // Getting interaction between boxes on the right edge:
+            for(unsigned i = 0; i < 2; i++)
+            {
+                M2L_inner_level[i + J + 2] = FMM3DTree::getOperator(2, 2 * (i - 1), -4 + 8 * k, 
+                                                                    r_x, r_y, r_z
+                                                                   );
+            }
 
-        // Getting interaction between boxes on the top edge:
-        for(unsigned i = 0; i < 4; i++)
-        {
-            nodes= af::join(1, scaled_standard_nodes_x + 2 * r_x * (2 - i),
-                            scaled_standard_nodes_y + 4 * r_y
-                           );
+            // Getting interaction between boxes on the top edge:
+            for(unsigned i = 0; i < 2; i++)
+            {
+                M2L_inner_level[i + J + 4] = FMM3DTree::getOperator(2 * (1 - i), 2, -4 + 8 * k, 
+                                                                    r_x, r_y, r_z
+                                                                   );
+            }
+            
+            // Getting interaction between boxes on the left edge:
+            for(unsigned i = 0; i < 2; i++)
+            {
+                M2L_inner_level[i + J + 6] = FMM3DTree::getOperator(-2, 2 * (1 - i), -4 + 8 * k, 
+                                                                    r_x, r_y, r_z
+                                                                   );
+            }
 
-            M2L_inner_level[i + 8] = this->M_ptr->buildArray(scaled_standard_nodes, nodes);
-        }
-
-        // Getting interaction between boxes on the left edge:
-        for(unsigned i = 0; i < 4; i++)
-        {
-            nodes= af::join(1, scaled_standard_nodes_x - 4 * r_x,
-                            scaled_standard_nodes_y + 2 * r_y * (2 - i)
-                           );
-
-            M2L_inner_level[i + 12] = this->M_ptr->buildArray(scaled_standard_nodes, nodes);
+            // For the centerpiece:
+            M2L_inner_level[J + 24] = FMM3DTree::getOperator(0, 0, -4 + 8 * k, 
+                                                             r_x, r_y, r_z
+                                                            );
         }
     
         this->M2L_outer.push_back(M2L_outer_level);
@@ -1189,67 +1463,69 @@ void FMM3DTree::getM2LInteractions()
     }
 }
 
-
 void FMM3DTree::getNeighborSelfInteractions() 
 {
     array M2L, nodes, leaf_nodes;
     
     // Get neighbor interactions:
-    double r_x_leaf = this->tree[this->max_levels][0].r_x; // since its a uniform tree, 
-                                                           // we don't bother about the box considered
-    double r_y_leaf = this->tree[this->max_levels][0].r_y;
+    double r_x = this->tree[this->max_levels][0].r_x; // since its a uniform tree, 
+                                                      // we don't bother about the box considered
+    double r_y = this->tree[this->max_levels][0].r_y;
+    double r_z = this->tree[this->max_levels][0].r_z;
 
-    leaf_nodes = af::join(1, this->standard_nodes(af::span, 0) * r_x_leaf,
-                          this->standard_nodes(af::span, 1) * r_y_leaf
-                         );
+    // Iterating over the layers in z:
+    unsigned short J = 0;
+    for(unsigned short j = 0; j < 3; j++)
+    {   
+        // Offset to account for level in z:
+        if(j == 1)
+            J = 9;
+        else if(j == 2)
+            J = 17;
 
-    // Finding interaction with boxes on the bottom edge(N0 and N1):
-    for(unsigned short i = 0; i < 2; i++)
-    {
-        nodes= af::join(1, (this->standard_nodes(af::span, 0) + 2 * (i - 1)) * r_x_leaf,
-                        (this->standard_nodes(af::span, 1) - 2) * r_y_leaf
-                       );
+        // Finding interaction with boxes on the bottom edge:
+        for(unsigned short i = 0; i < 2; i++)
+        {
+            this->neighbor_interaction[i + J] = FMM3DTree::getOperator(2 * (i - 1), -2, 2 * (j - 1), 
+                                                                       r_x, r_y, r_z
+                                                                      );
+        }
 
-        this->neighbor_interaction[i] = this->M_ptr->buildArray(leaf_nodes, nodes);
+        // Finding interaction with boxes on the right edge:
+        for(unsigned short i = 0; i < 2; i++)
+        {
+            this->neighbor_interaction[i + 2 + J] = FMM3DTree::getOperator(2, 2 * (i - 1), 2 * (j - 1), 
+                                                                           r_x, r_y, r_z
+                                                                          );
+        }
+
+        // Finding interaction with boxes on the top edge:
+        for(unsigned short i = 0; i < 2; i++)
+        {
+            this->neighbor_interaction[i + 4 + J] = FMM3DTree::getOperator(2 * (1 - i), 2, 2 * (j - 1), 
+                                                                           r_x, r_y, r_z
+                                                                          );
+        }
+
+        // Finding interaction with boxes on the left edge:
+        for(unsigned short i = 0; i < 2; i++)
+        {
+            this->neighbor_interaction[i + 6 + J] = FMM3DTree::getOperator(-2, 2 * (1 - i), 2 * (j - 1), 
+                                                                           r_x, r_y, r_z
+                                                                          );
+        }
     }
 
-    // Finding interaction with boxes on the right edge(N2 and N3):
-    for(unsigned short i = 0; i < 2; i++)
-    {
-        nodes= af::join(1, (this->standard_nodes(af::span, 0) + 2) * r_x_leaf,
-                        (this->standard_nodes(af::span, 1) + 2 * (i - 1)) * r_y_leaf
-                       );
-
-        this->neighbor_interaction[i + 2] = this->M_ptr->buildArray(leaf_nodes, nodes);
-    }
-
-    // Finding interaction with boxes on the top edge(N4 and N5):
-    for(unsigned short i = 0; i < 2; i++)
-    {
-        nodes= af::join(1, (this->standard_nodes(af::span, 0) + 2 * (1 - i)) * r_x_leaf,
-                        (this->standard_nodes(af::span, 1) + 2) * r_y_leaf
-                       );
-
-        this->neighbor_interaction[i + 4] = this->M_ptr->buildArray(leaf_nodes, nodes);
-    }
-
-    // Finding interaction with boxes on the left edge(N6 and N7):
-    for(unsigned short i = 0; i < 2; i++)
-    {
-        nodes= af::join(1, (this->standard_nodes(af::span, 0) - 2) * r_x_leaf,
-                        (this->standard_nodes(af::span, 1) + 2 * (1 - i)) * r_y_leaf
-                       );
-
-        this->neighbor_interaction[i + 6] = this->M_ptr->buildArray(leaf_nodes, nodes);
-    }
+    // Assigning the unalloted operators:
+    this->neighbor_interaction[8]  = FMM3DTree::getOperator(0, 0, -2, r_x, r_y, r_z);
+    this->neighbor_interaction[25] = FMM3DTree::getOperator(0, 0,  2, r_x, r_y, r_z);
 
     // Getting self-interaction:
-    this->self_interaction = this->M_ptr->buildArray(leaf_nodes, leaf_nodes);
+    this->self_interaction = FMM3DTree::getOperator(0, 0, 0, r_x, r_y, r_z);
     this->self_interaction.eval();
 }
 
 // ===== END OF FUNCTIONS USED IN TREE BUILDING AND PRECOMPUTING OPERATIONS INVOLVED =====
-
 // ========== FUNCTIONS USED IN EVALUATION OF POTENTIAL =============
 
 void FMM3DTree::assignLeafCharges()
@@ -1258,7 +1534,7 @@ void FMM3DTree::assignLeafCharges()
     for(unsigned i = 0; i < this->number_of_boxes[this->max_levels]; i++)
     {   
         // Getting the box that is in consideration:
-        FMM2DBox &box = this->tree[this->max_levels][i];
+        FMM3DBox &box = this->tree[this->max_levels][i];
 
         array std_locations_x, std_locations_y;
         // Mapping onto the standard interval of [-1, 1]:
@@ -1287,23 +1563,34 @@ void FMM3DTree::upwardTraveral()
     {
         // Level number for the child:
         int N_lc = N_level + 1;
-
-        int N_bc0, N_bc1, N_bc2, N_bc3;
+        int N_bc0, N_bc1, N_bc2, N_bc3, N_bc4, N_bc5, N_bc6, N_bc7;
         for(unsigned N_box = 0; N_box < this->number_of_boxes[N_level]; N_box++) 
         {
             // Box number for child0:
-            N_bc0 = 4 * N_box;
+            N_bc0 = 8 * N_box;
             // Box number for child1:
-            N_bc1 = 4 * N_box + 1;
+            N_bc1 = 8 * N_box + 1;
             // Box number for child2:
-            N_bc2 = 4 * N_box + 2;
+            N_bc2 = 8 * N_box + 2;
             // Box number for child3:
-            N_bc3 = 4 * N_box + 3;
+            N_bc3 = 8 * N_box + 3;
+            // Box number for child4:
+            N_bc4 = 8 * N_box + 4;
+            // Box number for child5:
+            N_bc5 = 8 * N_box + 5;
+            // Box number for child6:
+            N_bc6 = 8 * N_box + 6;
+            // Box number for child7:
+            N_bc7 = 8 * N_box + 7;
 
             tree[N_level][N_box].node_charges =  af::matmul(this->M2M[0], tree[N_lc][N_bc0].node_charges)
                                                + af::matmul(this->M2M[1], tree[N_lc][N_bc1].node_charges)
                                                + af::matmul(this->M2M[2], tree[N_lc][N_bc2].node_charges)
-                                               + af::matmul(this->M2M[3], tree[N_lc][N_bc3].node_charges);
+                                               + af::matmul(this->M2M[3], tree[N_lc][N_bc3].node_charges)
+                                               + af::matmul(this->M2M[4], tree[N_lc][N_bc3].node_charges)
+                                               + af::matmul(this->M2M[5], tree[N_lc][N_bc3].node_charges)
+                                               + af::matmul(this->M2M[6], tree[N_lc][N_bc3].node_charges)
+                                               + af::matmul(this->M2M[7], tree[N_lc][N_bc3].node_charges);
         }
     }
 }
@@ -1316,14 +1603,14 @@ void FMM3DTree::evaluateAllM2LHomogeneous()
         for(unsigned N_box = 0; N_box < this->number_of_boxes[N_level]; N_box++)
         {
             // Getting the box in consideration:
-            FMM2DBox &box = this->tree[N_level][N_box];
+            FMM3DBox &box = this->tree[N_level][N_box];
             // Initializing the value for the potentials:
             box.node_potentials = af::constant(0, this->rank, f64);
 
             if(this->is_homogeneous)
             {
                 // Inner well-separated clusters
-                for(unsigned short i = 0; i < 16; i++) 
+                for(unsigned short i = 0; i < 98; i++) 
                 {
                     int N_inner = box.inner[i];
                     if(N_inner > -1) 
@@ -1335,7 +1622,7 @@ void FMM3DTree::evaluateAllM2LHomogeneous()
                 }
 
                 // Outer well-separated clusters
-                for(unsigned short i = 0; i < 24; i++) 
+                for(unsigned short i = 0; i < 218; i++) 
                 {
                     int N_outer = box.outer[i];
                     if(N_outer > -1) 
@@ -1353,7 +1640,7 @@ void FMM3DTree::evaluateAllM2LHomogeneous()
             else if(this->is_log_homogeneous)
             {
                 // Inner well-separated clusters
-                for(unsigned short i = 0; i < 16; i++) 
+                for(unsigned short i = 0; i < 98; i++) 
                 {
                     int N_inner = box.inner[i];
                     if(N_inner > -1) 
@@ -1371,7 +1658,7 @@ void FMM3DTree::evaluateAllM2LHomogeneous()
                 }
 
                 //  Outer well-separated clusters
-                for(unsigned short i = 0; i < 24; i++) 
+                for(unsigned short i = 0; i < 218; i++) 
                 {
                     int N_outer = box.outer[i];
                     if(N_outer > -1) 
@@ -1403,9 +1690,9 @@ void FMM3DTree::evaluateAllM2L()
         for(unsigned N_box = 0; N_box < this->number_of_boxes[N_level]; N_box++)
         {
             // Getting the box in consideration:
-            FMM2DBox &box = this->tree[N_level][N_box];
+            FMM3DBox &box = this->tree[N_level][N_box];
             // Inner well-separated clusters
-            for(unsigned short i = 0; i < 16; i++) 
+            for(unsigned short i = 0; i < 98; i++) 
             {
                 int N_inner = box.inner[i];
                 if(N_inner > -1) 
@@ -1417,7 +1704,7 @@ void FMM3DTree::evaluateAllM2L()
             }
 
             // Outer well-separated clusters
-            for(unsigned short i = 0; i < 24; i++) 
+            for(unsigned short i = 0; i < 218; i++) 
             {
                 int N_outer = box.outer[i];
                 if(N_outer > -1) 
@@ -1445,9 +1732,9 @@ void FMM3DTree::downwardTraversal()
         for(unsigned N_box = 0; N_box < this->number_of_boxes[N_level]; N_box++) 
         {
             // Box number for child0. Box numbers for the remaining children are defined w.r.t to this:
-            N_bc0 = 4 * N_box;
+            N_bc0 = 8 * N_box;
 
-            for(unsigned short N_child = 0; N_child < 4; N_child++)
+            for(unsigned short N_child = 0; N_child < 8; N_child++)
             {
                 tree[N_lc][N_bc0 + N_child].node_potentials += af::matmul(L2L[N_child],
                                                                           tree[N_level][N_box].node_potentials
@@ -1465,7 +1752,7 @@ void FMM3DTree::evaluateL2P()
     for(unsigned i = 0; i < this->number_of_boxes[this->max_levels]; i++)
     {   
         // Getting the box that is in consideration:
-        FMM2DBox &box = this->tree[this->max_levels][i];
+        FMM3DBox &box = this->tree[this->max_levels][i];
 
         // Mapping onto the standard interval of [-1, 1]:
         scalePoints(box.c_x, box.r_x, (*(this->M_ptr->getSourceCoordsPtr()))(box.inds_in_box, 0),
@@ -1493,7 +1780,7 @@ void FMM3DTree::evaluateLeafLevelInteractions()
     //     for(unsigned i = 0; i < this->number_of_boxes[this->max_levels]; i++)
     //     {   
     //         // Getting the box that is in consideration:
-    //         FMM2DBox &box = this->tree[this->max_levels][i];
+    //         FMM3DBox &box = this->tree[this->max_levels][i];
     //         int N_neighbor;
     //         array targets = (*(this->M_ptr->getSourceCoordsPtr()))(box.inds_in_box, af::span);
 
@@ -1503,7 +1790,7 @@ void FMM3DTree::evaluateLeafLevelInteractions()
         
     //             if(N_neighbor > -1) 
     //             {
-    //                 FMM2DBox &neighbor_box = tree[this->max_levels][N_neighbor];
+    //                 FMM3DBox &neighbor_box = tree[this->max_levels][N_neighbor];
     //                 array sources = (*(this->M_ptr->getSourceCoordsPtr()))(neighbor_box.inds_in_box, af::span);
     //                 array charges = (*(this->charges_ptr))(neighbor_box.inds_in_box);
     //                 // Updating the potentials for the particles in the box of consideration
@@ -1526,16 +1813,16 @@ void FMM3DTree::evaluateLeafLevelInteractions()
         for(unsigned i = 0; i < this->number_of_boxes[this->max_levels]; i++)
         {   
             // Getting the box that is in consideration:
-            FMM2DBox &box = this->tree[this->max_levels][i];
+            FMM3DBox &box = this->tree[this->max_levels][i];
             int N_neighbor;
 
             // Looping over all possible neighbor boxes:
-            for(unsigned j = 0; j < 8; j++) 
+            for(unsigned j = 0; j < 26; j++) 
             {
                 N_neighbor = box.neighbor[j];
                 if(N_neighbor > -1) 
                 {
-                    FMM2DBox &neighbor_box = tree[this->max_levels][N_neighbor];
+                    FMM3DBox &neighbor_box = tree[this->max_levels][N_neighbor];
                     // Evaluating the node potentials:
                     box.node_potentials += 
                     matmul(this->neighbor_interaction[j], neighbor_box.node_charges);
@@ -1569,7 +1856,7 @@ void FMM3DTree::checkPotentialInBox(int N_box)
 
     // Evaluating the direct potentials:
     array potential = af::constant(0, this->rank, f64);
-    FMM2DBox &box = this->tree[this->max_levels][N_box];
+    FMM3DBox &box = this->tree[this->max_levels][N_box];
 
     // Getting the P2M operator:
     array L2P = array(box.inds_in_box.elements(), N_nodes * N_nodes, f64);
@@ -1577,7 +1864,7 @@ void FMM3DTree::checkPotentialInBox(int N_box)
 
     for(int i = 0; i < this->number_of_boxes[this->max_levels]; i++)
     {
-        FMM2DBox &interacting_box = this->tree[this->max_levels][i];
+        FMM3DBox &interacting_box = this->tree[this->max_levels][i];
         potential += matmul(this->M_ptr->buildArray(box.nodes, interacting_box.nodes),
                             interacting_box.node_charges
                            );
