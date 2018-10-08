@@ -68,6 +68,7 @@ public:
     int parent;       // box number of the parent
     int children[4];  // box numbers of the children
     int neighbor[8];  // box numbers of the neighbors
+    
     // Members used in a level restricted tree:
     int neighbor_fine[12];
     int sep_neighbor_fine[20];
@@ -78,6 +79,7 @@ public:
 
     array nodes;      // nodes at the leaf level
     array node_charges, node_potentials;
+    array exact_potentials; // used in checks / benchmarking
 
     // Constructor for the class
     FMM2DBox();

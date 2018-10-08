@@ -111,8 +111,10 @@ public:
     void printTreeDetails();
     // Returns the potential:
     array& getPotential(const array& charges);
+    // Evaluates the potential using the usual naive method:
+    void evaluateExactPotentials();
     // Checks the potential in FMM(used in validation)
-    void checkPotentialInBox(int N_box);
+    void checkPotentialsInBox(int N_box);
 };
 
 // =================== PUBLIC FUNCTIONS =============================
@@ -138,31 +140,51 @@ array& FMM2DTree::getPotential(const array &charges)
 {
     this->charges_ptr = &charges;
     
-    // If there's only level, then only leaf-level evaluations are performed:
-    if(this->max_levels > 1)
+    if(charges.elements() == 0)
     {
-        cout << "Getting the charges at the nodes of the leaf level" << endl;
-        FMM2DTree::assignLeafCharges();
         cout << "Performing upward sweep to get charges" << endl;
         FMM2DTree::upwardTraveral();
         cout << "Performing M2L..." << endl;
-
+        
         if(this->is_homogeneous || this->is_log_homogeneous)
             FMM2DTree::evaluateAllM2LHomogeneous();
         else
             FMM2DTree::evaluateAllM2L();
-
+        
         cout << "Performing downward sweep" << endl;
         FMM2DTree::downwardTraversal();
-        cout << "Getting potentials for particles using L2P" << endl;
-        FMM2DTree::evaluateL2P();
+        cout << "Computing Direct Interactions:" << endl;
+        FMM2DTree::evaluateLeafLevelInteractions();
     }
 
-    cout << "Evaluation the direct interactions at the leaf levels" << endl;
-    FMM2DTree::evaluateLeafLevelInteractions();
+    else
+    {
+        // If there's only level, then only leaf-level evaluations are performed:
+        if(this->max_levels > 1)
+        {
+            cout << "Getting the charges at the nodes of the leaf level" << endl;
+            FMM2DTree::assignLeafCharges();
+            cout << "Performing upward sweep to get charges" << endl;
+            FMM2DTree::upwardTraveral();
+            cout << "Performing M2L..." << endl;
 
-    this->potentials.eval();
-    return this->potentials;
+            if(this->is_homogeneous || this->is_log_homogeneous)
+                FMM2DTree::evaluateAllM2LHomogeneous();
+            else
+                FMM2DTree::evaluateAllM2L();
+
+            cout << "Performing downward sweep" << endl;
+            FMM2DTree::downwardTraversal();
+            cout << "Getting potentials for particles using L2P" << endl;
+            FMM2DTree::evaluateL2P();
+        }
+
+        cout << "Evaluation the direct interactions at the leaf levels" << endl;
+        FMM2DTree::evaluateLeafLevelInteractions();
+
+        this->potentials.eval();
+        return this->potentials;
+    }
 }
 
 // So when N_levels and radius is passed to the constructor, then we'll create
@@ -1489,39 +1511,32 @@ void FMM2DTree::evaluateLeafLevelInteractions()
     }
 }
 
-void FMM2DTree::checkPotentialInBox(int N_box)
+void FMM2DTree::checkPotentialsInBox(int N_box)
 {
-    cout << "Performing upward sweep to get charges" << endl;
-    FMM2DTree::upwardTraveral();
-    cout << "Performing M2L..." << endl;
-    
-    if(this->is_homogeneous || this->is_log_homogeneous)
-        FMM2DTree::evaluateAllM2LHomogeneous();
-    else
-        FMM2DTree::evaluateAllM2L();
-    
-    cout << "Performing downward sweep" << endl;
-    FMM2DTree::downwardTraversal();
-    cout << "Computing Direct Interactions:" << endl;
-    FMM2DTree::evaluateLeafLevelInteractions();
-
-    // Evaluating the direct potentials:
-    array potential = af::constant(0, this->rank, f64);
+    cout << "Performing check in:" << N_box << endl;
     FMM2DBox &box = this->tree[this->max_levels][N_box];
-    for(int i = 0; i < this->number_of_boxes[this->max_levels]; i++)
-    {
-        FMM2DBox &interacting_box = this->tree[this->max_levels][i];
-        potential += matmul(this->M_ptr->buildArray(box.nodes, interacting_box.nodes),
-                            interacting_box.node_charges
-                           );
-    }
-
-    double abs_err = af::norm(potential - box.node_potentials);
-    double rel_err = abs_err / af::norm(potential);
+    double abs_err = af::norm(box.exact_potentials - box.node_potentials);
+    double rel_err = abs_err / af::norm(box.exact_potentials);
 
     cout << "=============L2 ERROR IN THE CALCULATED POTENTIAL=============" << endl;
     cout << "Absolute Error: " << abs_err << endl;
     cout << "Relative Error: " << rel_err << endl;
+}
+
+void FMM2DTree::evaluateExactPotentials()
+{
+    for(int N_box = 0; N_box < this->number_of_boxes[this->max_levels]; N_box++)
+    {
+        FMM2DBox &box = this->tree[this->max_levels][N_box];
+        box.exact_potentials = af::constant(0, this->rank, f64);
+        for(int i = 0; i < this->number_of_boxes[this->max_levels]; i++)
+        {
+            FMM2DBox &interacting_box = this->tree[this->max_levels][i];
+            box.exact_potentials += matmul(this->M_ptr->buildArray(box.nodes, interacting_box.nodes),
+                                           interacting_box.node_charges
+                                          );
+        }
+    }
 }
 
 // ========== END OF FUNCTIONS USED IN EVALUATION OF POTENTIAL =============
