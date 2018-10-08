@@ -1,7 +1,7 @@
 #include <arrayfire.h>
 using af::array;
 
-void computeRSquared2D(array &i, array &j, array &targets, array &sources, array &r_squared)
+void computeRSquared2D(const array &i, const array &j, const array &targets, const array &sources, array &r_squared)
 {
     array x_targets = targets(af::span, 0);
     array x_sources = sources(af::span, 0);
@@ -17,7 +17,7 @@ void computeRSquared2D(array &i, array &j, array &targets, array &sources, array
     r_squared.eval();
 }
 
-void computeRSquared3D(array &i, array &j, array &targets, array &sources, array &r_squared)
+void computeRSquared3D(const array &i, const array &j, const array &targets, const array &sources, array &r_squared)
 {
     array x_targets = targets(af::span, 0);
     array x_sources = sources(af::span, 0);
@@ -43,11 +43,11 @@ void computeRSquared3D(array &i, array &j, array &targets, array &sources, array
 // S(x, y) =  - (1 / 2π) ln(r); r != 0, 0 if r = 0
 // In 3D:
 // S(x, y) = (1 / 4πr); r != 0, 0 if r = 0
-array laplaceSingleLayer(array &i, array &j, array &targets, array &sources)
+array laplaceSingleLayer(const array &i, const array &j, const array &targets, const array &sources)
 {   
     array r_squared, interaction;
 
-    else if(target.dims(1) == 2)
+    if(targets.dims(1) == 2)
     {
         computeRSquared2D(i, j, targets, sources, r_squared);
         interaction = af::select(r_squared == 0, 0, (-1 / (4 * af::Pi)) * af::log(r_squared)); 
@@ -65,17 +65,17 @@ array laplaceSingleLayer(array &i, array &j, array &targets, array &sources)
 
 // ===============INVERSE QUADRIC KERNEL========================
 // K(x, y) = 1 / (1 + r^2)
-array inverseQuadricKernel(array &i, array &j, array &targets, array &sources)
+array inverseQuadricKernel(const array &i, const array &j, const array &targets, const array &sources)
 {   
     array r, r_squared, interaction;
     
-    if(target.dims(0) == target.elements())
+    if(targets.dims(0) == targets.elements())
     {
-        r           = targets(i) - (sources.T())(j)
+        r           = targets(i) - (sources.T())(j);
         interaction = 1 / (1 + r * r);
     }
 
-    else if(target.dims(1) == 2)
+    else if(targets.dims(1) == 2)
     {
         computeRSquared2D(i, j, targets, sources, r_squared);
         interaction = 1 / (1 + r_squared);
@@ -93,17 +93,17 @@ array inverseQuadricKernel(array &i, array &j, array &targets, array &sources)
 
 // ===============QUADRIC KERNEL========================
 // K(x, y) = (1 + r^2)
-array quadricKernel(array &i, array &j, array &targets, array &sources)
+array quadricKernel(const array &i, const array &j, const array &targets, const array &sources)
 {   
     array r, r_squared, interaction;
     
-    if(target.dims(0) == target.elements())
+    if(targets.dims(0) == targets.elements())
     {
-        r           = targets(i) - (sources.T())(j)
+        r           = targets(i) - (sources.T())(j);
         interaction = (1 + r * r);
     }
 
-    else if(target.dims(1) == 2)
+    else if(targets.dims(1) == 2)
     {
         computeRSquared2D(i, j, targets, sources, r_squared);
         interaction = (1 + r_squared);
@@ -121,17 +121,17 @@ array quadricKernel(array &i, array &j, array &targets, array &sources)
 
 // ===============GAUSSIAN KERNEL========================
 // K(x, y) = exp(-r^2)
-array gaussianKernel(array &i, array &j, array &targets, array &sources)
+array gaussianKernel(const array &i, const array &j, const array &targets, const array &sources)
 {
     array r, r_squared, interaction;
     
-    if(target.dims(0) == target.elements())
+    if(targets.dims(0) == targets.elements())
     {
-        r           = targets(i) - (sources.T())(j)
+        r           = targets(i) - (sources.T())(j);
         interaction = af::exp(-r * r);
     }
 
-    else if(target.dims(1) == 2)
+    else if(targets.dims(1) == 2)
     {
         computeRSquared2D(i, j, targets, sources, r_squared);
         interaction = af::exp(-r_squared);
@@ -154,11 +154,11 @@ array gaussianKernel(array &i, array &j, array &targets, array &sources)
 // In 3D:
 // S(x, y) = (1 / 8πμ) ( I / r - (r ⊗ r) / r^3); r != 0, 0 if r = 0
 // Below, we've taken μ = 1:
-array stokesSingleLayer(array &i, array &j, array &targets, array &sources)
+array stokesSingleLayer(const array &i, const array &j, const array &targets, const array &sources)
 {   
     array r, r_kron_r, interaction;
 
-    if(target.dims(1) == 2)
+    if(targets.dims(1) == 2)
     {
         r_kron_r = array(targets.dims(0), sources.dims(0), 4, f64);
         
@@ -177,12 +177,12 @@ array stokesSingleLayer(array &i, array &j, array &targets, array &sources)
         r_kron_r(af::span, af::span, 3) = y_diff * y_diff;
 
         // Important thing to note here: this is ||r||^2
-        r_squared = x_diff * x_diff + y_diff * y_diff;
+        array r_squared = x_diff * x_diff + y_diff * y_diff;
 
         interaction = (-1 / (4 * af::Pi)) * 
-                      (  0.5 * af::log(r_squared) * af::identity(r_squared.dims(0), r_squared.dims(1), f64)
+                      (  0.5 * af::log(r_squared)
                        - r_kron_r / r_squared
-                      )
+                      );
 
         // Only choosing those elements which are not infty / NaNs:
         interaction = af::select(af::isNaN(interaction) || af::isInf(interaction), 0, interaction); 
@@ -219,12 +219,12 @@ array stokesSingleLayer(array &i, array &j, array &targets, array &sources)
         r = af::sqrt(x_diff * x_diff + y_diff * y_diff + z_diff * z_diff);
 
         interaction = (1 / (8 * af::Pi)) * 
-                      (  af::identity(r.dims(0), r.dims(1), f64) / r
+                      (  1 / r
                        - r_kron_r / (af::pow(r, 3))
-                      )
+                      );
 
         // Only choosing those elements which are not infty / NaNs:
-        interaction = af::select(af::isNan(interaction) || af::isInf(interaction), 0, interaction); 
+        interaction = af::select(af::isNaN(interaction) || af::isInf(interaction), 0, interaction); 
    }
 
     interaction.eval();

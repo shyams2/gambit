@@ -9,27 +9,7 @@
 #include "MatrixData.hpp"
 #include "MatrixFactorizations/getInterpolation.hpp"
 #include "utils/computeError.hpp"
-
-// Laplacian kernel:
-// K(r) = 1 / r
-array interaction_kernel(const array &i, const array &j, const array &targets, const array &sources)
-{   
-    array x_targets = targets(af::span, 0);
-    array x_sources = sources(af::span, 0);
-
-    array y_targets = targets(af::span, 1);
-    array y_sources = sources(af::span, 1);
-
-    array z_targets = targets(af::span, 2);
-    array z_sources = sources(af::span, 2);
-
-    array x_diff = x_targets(i) - (x_sources.T())(j);
-    array y_diff = y_targets(i) - (y_sources.T())(j);
-    array z_diff = z_targets(i) - (z_sources.T())(j);
-    
-    array r_squared = x_diff * x_diff + y_diff * y_diff + z_diff * z_diff;
-    return(1 / af::sqrt(r_squared));
-}
+#include "../interactionKernels.hpp"
 
 int main(int argc, char** argv)
 {
@@ -46,25 +26,26 @@ int main(int argc, char** argv)
     array p1 = -0.5 - af::randu(size, 3, f64); // r = 0.5 c = -1
     array p2 =  0.5 + af::randu(size, 3, f64); // r = 0.5 c = 1
     // Creating an instance of MatrixData:
-    MatrixData M(interaction_kernel, p1, p2);
+    MatrixData M(stokesSingleLayer, p1, p2);
 
     // Initializing the arrays U, S, V:
     array U, S, V;
+    
     cout << "Using Chebyshev Nodes" << endl;
     MatrixFactorizer::getInterpolation(U, S, V, rank, "CHEBYSHEV", M);
     // Finding Z_approx:
-    array Z_approx = af::matmul(U, S, V.T());
+    array Z_approx = af::matmul(af::tile(U, 1, 1, S.dims(2)), S, af::tile(V.T(), 1, 1, S.dims(2)));        
     printAllErrorNorms(Z_approx, M.getArray());
 
     cout << "Using Legendre Nodes" << endl;
     MatrixFactorizer::getInterpolation(U, S, V, rank, "LEGENDRE", M);
     // Finding Z_approx:
-    Z_approx = af::matmul(U, S, V.T());
+    Z_approx = af::matmul(af::tile(U, 1, 1, S.dims(2)), S, af::tile(V.T(), 1, 1, S.dims(2)));        
     printAllErrorNorms(Z_approx, M.getArray());
 
     cout << "Using Equispaced Nodes" << endl;
     MatrixFactorizer::getInterpolation(U, S, V, rank, "EQUISPACED", M);
     // Finding Z_approx:
-    Z_approx = af::matmul(U, S, V.T());
+    Z_approx = af::matmul(af::tile(U, 1, 1, S.dims(2)), S, af::tile(V.T(), 1, 1, S.dims(2)));        
     printAllErrorNorms(Z_approx, M.getArray());
 }

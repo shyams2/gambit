@@ -1,5 +1,6 @@
 #include <iostream>
 #include <arrayfire.h>
+#include <math.h>
 #include <string>
 #include <cstdlib>
 
@@ -20,8 +21,8 @@ void computeError(const af::array &Z_approx, const af::array &Z, const string &e
     // Calculating the error using L2-norm:
     else if(error_type == "L2")
     {
-        abs_error = af::norm(Z_approx - Z);
-        rel_error = af::norm(Z_approx - Z) / af::norm(Z);
+        abs_error = sqrt(af::sum<double>(af::pow((Z_approx - Z), 2)));
+        rel_error = sqrt(af::sum<double>(af::pow((Z_approx - Z), 2))) / sqrt(af::sum<double>(af::pow(Z, 2)));
     }
 
     // Calculating the error using L∞-norm:
