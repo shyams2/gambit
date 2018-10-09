@@ -496,7 +496,7 @@ bool MatrixData::isTranslationInvariant(double dim = -1)
                                            );
     af::gforSet(false);
 
-    if(af::norm(res - res_shift) < 1e-14)
+    if(af::mean<double>(af::abs(res - res_shift)) < 1e-14)
         return true;
 
     else

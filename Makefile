@@ -9,7 +9,7 @@ CC              = h5c++ $(COMPILER_OPTIONS)
 LIBS            = -laf
 LIB_PATHS       = -L $(AF_PATH)/lib
 INCLUDES        = -I $(AF_PATH)/include -I $(EIGEN_PATH) -I $(HIGHFIVE_PATH)/include -I ./header
-SOURCES         = ./test/testFMM/testFMM2D_alternate.cpp
+SOURCES         = ./test/testFMM/testFMM2D.cpp
 EXECUTABLE      = ./exec/testFMM
 
 all:

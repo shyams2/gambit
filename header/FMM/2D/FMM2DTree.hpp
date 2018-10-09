@@ -145,7 +145,7 @@ array& FMM2DTree::getPotential(const array &charges)
         cout << "Performing upward sweep to get charges" << endl;
         FMM2DTree::upwardTraveral();
         cout << "Performing M2L..." << endl;
-        
+
         if(this->is_homogeneous || this->is_log_homogeneous)
             FMM2DTree::evaluateAllM2LHomogeneous();
         else
@@ -1261,6 +1261,7 @@ void FMM2DTree::upwardTraveral()
 
 void FMM2DTree::evaluateAllM2LHomogeneous()
 {
+    size_t tensor_dim = this->M2L_inner[0][0].dims(2);
     // We start from level 2 since L1 doesn't have any boxes in its interaction list
     for(unsigned N_level = 2; N_level <= this->max_levels; N_level++) 
     {
@@ -1269,8 +1270,7 @@ void FMM2DTree::evaluateAllM2LHomogeneous()
             // Getting the box in consideration:
             FMM2DBox &box = this->tree[N_level][N_box];
             // Initializing the value for the potentials:
-            box.node_potentials = af::constant(0, this->rank, f64);
-
+            box.node_potentials = af::constant(0, this->rank, 1, tensor_dim, f64);
             if(this->is_homogeneous)
             {
                 // Inner well-separated clusters
@@ -1280,7 +1280,9 @@ void FMM2DTree::evaluateAllM2LHomogeneous()
                     if(N_inner > -1) 
                     {
                         box.node_potentials += af::matmul(this->M2L_inner[0][i],
-                                                          this->tree[N_level][N_inner].node_charges
+                                                          af::tile(this->tree[N_level][N_inner].node_charges,
+                                                                   1, 1, tensor_dim
+                                                                  )
                                                          );
                     }
                 }
@@ -1292,7 +1294,9 @@ void FMM2DTree::evaluateAllM2LHomogeneous()
                     if(N_outer > -1) 
                     {
                         box.node_potentials += af::matmul(this->M2L_outer[0][i],
-                                                          this->tree[N_level][N_outer].node_charges
+                                                          af::tile(this->tree[N_level][N_outer].node_charges,
+                                                                   1, 1, tensor_dim
+                                                                  )
                                                          );
                     }
                 }
@@ -1310,13 +1314,15 @@ void FMM2DTree::evaluateAllM2LHomogeneous()
                     if(N_inner > -1) 
                     {
                         box.node_potentials += af::matmul(this->M2L_inner[0][i],
-                                                          this->tree[N_level][N_inner].node_charges
+                                                          af::tile(this->tree[N_level][N_inner].node_charges,
+                                                                   1, 1, tensor_dim
+                                                                  )
                                                          );
 
                         // Here the scaling factor to account for level shows up as an addition operator:
                         box.node_potentials +=   this->box_log_homog_radius[N_level]
                                                * af::tile(af::sum(this->tree[N_level][N_inner].node_charges),
-                                                          this->rank
+                                                          this->rank, 1, tensor_dim
                                                          );
                     }
                 }
@@ -1328,13 +1334,15 @@ void FMM2DTree::evaluateAllM2LHomogeneous()
                     if(N_outer > -1) 
                     {
                         box.node_potentials += af::matmul(this->M2L_outer[0][i],
-                                                          this->tree[N_level][N_outer].node_charges
+                                                          af::tile(this->tree[N_level][N_outer].node_charges,
+                                                                   1, 1, tensor_dim
+                                                                  )
                                                          );
 
                         // Here the scaling factor to account for level shows up as an addition operator:
                         box.node_potentials +=   this->box_log_homog_radius[N_level]
                                                * af::tile(af::sum(this->tree[N_level][N_outer].node_charges),
-                                                          this->rank
+                                                          this->rank, 1, tensor_dim
                                                          );
                     }
                 }
@@ -1348,6 +1356,7 @@ void FMM2DTree::evaluateAllM2LHomogeneous()
 
 void FMM2DTree::evaluateAllM2L()
 {
+    size_t tensor_dim = this->M2L_inner[0][0].dims(2);
     // We start from level 2 since L1 doesn't have any boxes in its interaction list
     for(unsigned N_level = 2; N_level <= this->max_levels; N_level++) 
     {
@@ -1361,9 +1370,11 @@ void FMM2DTree::evaluateAllM2L()
                 int N_inner = box.inner[i];
                 if(N_inner > -1) 
                 {   
-                    box.node_potentials += matmul(this->M2L_inner[N_level-2][i],
-                                                  this->tree[N_level][N_inner].node_charges
-                                                 );
+                    box.node_potentials += af::matmul(this->M2L_inner[N_level-2][i],
+                                                      af::tile(this->tree[N_level][N_inner].node_charges,
+                                                               1, 1, tensor_dim
+                                                              )
+                                                     );
                 }
             }
 
@@ -1373,9 +1384,11 @@ void FMM2DTree::evaluateAllM2L()
                 int N_outer = box.outer[i];
                 if(N_outer > -1) 
                 {
-                    box.node_potentials += matmul(this->M2L_outer[N_level-2][i],
-                                                  this->tree[N_level][N_outer].node_charges
-                                                 );
+                    box.node_potentials += af::matmul(this->M2L_outer[N_level-2][i],
+                                                      af::tile(this->tree[N_level][N_outer].node_charges,
+                                                               1, 1, tensor_dim
+                                                              )
+                                                     );
                 }
             }
 
@@ -1387,6 +1400,7 @@ void FMM2DTree::evaluateAllM2L()
 
 void FMM2DTree::downwardTraversal()
 {
+    size_t tensor_dim = this->M2L_inner[0][0].dims(2);
     for(unsigned N_level = 2; N_level < this->max_levels; N_level++) 
     {
         // Level number for the child:
@@ -1400,7 +1414,7 @@ void FMM2DTree::downwardTraversal()
 
             for(unsigned short N_child = 0; N_child < 4; N_child++)
             {
-                tree[N_lc][N_bc0 + N_child].node_potentials += af::matmul(L2L[N_child],
+                tree[N_lc][N_bc0 + N_child].node_potentials += af::matmul(af::tile(L2L[N_child], 1, 1, tensor_dim),
                                                                           tree[N_level][N_box].node_potentials
                                                                          );
                 tree[N_lc][N_bc0 + N_child].node_potentials.eval();
@@ -1475,7 +1489,8 @@ void FMM2DTree::evaluateLeafLevelInteractions()
     }
 
     else
-    {
+    {   
+        size_t tensor_dim = this->M2L_inner[0][0].dims(2);
         // Looping over the boxes at the leaf level:
         for(unsigned i = 0; i < this->number_of_boxes[this->max_levels]; i++)
         {   
@@ -1492,13 +1507,21 @@ void FMM2DTree::evaluateLeafLevelInteractions()
                     FMM2DBox &neighbor_box = tree[this->max_levels][N_neighbor];
                     // Evaluating the node potentials:
                     box.node_potentials += 
-                    matmul(this->neighbor_interaction[j], neighbor_box.node_charges);
+                    matmul(this->neighbor_interaction[j],
+                           af::tile(neighbor_box.node_charges,
+                                    1, 1, tensor_dim
+                                   )
+                          );
                 }
             }
 
             // Self interaction:
             box.node_potentials += 
-            matmul(this->self_interaction, box.node_charges);
+            matmul(this->self_interaction,
+                   af::tile(box.node_charges,
+                            1, 1, tensor_dim
+                           )
+                  );
         }
     }
 }
@@ -1507,8 +1530,8 @@ void FMM2DTree::checkPotentialsInBox(int N_box)
 {
     cout << "Performing check in: " << N_box << endl;
     FMM2DBox &box = this->tree[this->max_levels][N_box];
-    double abs_err = af::norm(box.exact_potentials - box.node_potentials);
-    double rel_err = abs_err / af::norm(box.exact_potentials);
+    double abs_err = af::sum<double>(af::pow(box.exact_potentials - box.node_potentials, 2));
+    double rel_err = abs_err / af::sum<double>(af::pow(box.exact_potentials, 2));
 
     cout << "=============L2 ERROR IN THE CALCULATED POTENTIAL=============" << endl;
     cout << "Absolute Error: " << abs_err << endl;
@@ -1517,15 +1540,18 @@ void FMM2DTree::checkPotentialsInBox(int N_box)
 
 void FMM2DTree::evaluateExactPotentials()
 {
+    size_t tensor_dim = this->M2L_inner[0][0].dims(2);
     for(int N_box = 0; N_box < this->number_of_boxes[this->max_levels]; N_box++)
     {
         FMM2DBox &box = this->tree[this->max_levels][N_box];
-        box.exact_potentials = af::constant(0, this->rank, f64);
+        box.exact_potentials = af::constant(0, this->rank, 1, tensor_dim, f64);
         for(int i = 0; i < this->number_of_boxes[this->max_levels]; i++)
         {
             FMM2DBox &interacting_box = this->tree[this->max_levels][i];
             box.exact_potentials += matmul(this->M_ptr->buildArray(box.nodes, interacting_box.nodes),
-                                           interacting_box.node_charges
+                                           af::tile(interacting_box.node_charges,
+                                                    1, 1, tensor_dim
+                                                   )
                                           );
         }
     }

@@ -12,7 +12,7 @@ int main(int argc, char** argv)
     af::info();
     cout << endl;
     // Creating an instance of MatrixData:
-    MatrixData M(gaussianKernel);
+    MatrixData M(stokesSingleLayer);
     // We then will pass this to the FMM2D tree class:
     FMM2DTree T(M, N_nodes, "LEGENDRE", N_levels, 1);
 
