@@ -1,10 +1,10 @@
-# Matrix Factorizations:
-
-This repository contains the various matrix factorization methods that I'm in the process of trying out. It additionally also contains some linear algebra tools and utilities.
+# gambit - A library consisting of fast low-rank factorizations and solvers:
 
 The files of this repository are contained in:
 * `header`: Here the factorization methods / utilities are declared.
 * `test`: In this folder, the implementation of the various methods declared in `header` are checked. It also contains the timing runs for some standard functions like matvec, LU, QR, etc that I've tried out.
+
+NOTE: Still in active development! Expect some adventures!
 
 ## Building the code:
 

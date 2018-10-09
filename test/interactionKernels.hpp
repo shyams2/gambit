@@ -13,7 +13,7 @@ void computeRSquared2D(const array &i, const array &j, const array &targets, con
     array y_diff = y_targets(i) - (y_sources.T())(j);
     
     // R^2 = (x_i - x_j)^2 + (y_i - y_j)^2;
-    r_squared =   x_diff * x_diff + y_diff * y_diff;
+    r_squared = x_diff * x_diff + y_diff * y_diff;
     r_squared.eval();
 }
 
@@ -33,7 +33,7 @@ void computeRSquared3D(const array &i, const array &j, const array &targets, con
     array z_diff = z_targets(i) - (z_sources.T())(j);
     
     // R^2 = (x_i - x_j)^2 + (y_i - y_j)^2 + (z_i - z_j)^2;
-    r_squared   = x_diff * x_diff + y_diff * y_diff + z_diff * z_diff;
+    r_squared = x_diff * x_diff + y_diff * y_diff + z_diff * z_diff;
     r_squared.eval();
 }
 

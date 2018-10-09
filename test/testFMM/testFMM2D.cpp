@@ -16,6 +16,7 @@ int main(int argc, char** argv)
     // We then will pass this to the FMM2D tree class:
     FMM2DTree T(M, N_nodes, "LEGENDRE", N_levels, 1);
 
+    // T.printTreeDetails();
     T.getPotential(array());
     T.evaluateExactPotentials();
 
@@ -31,10 +32,6 @@ int main(int argc, char** argv)
     T.checkPotentialsInBox(box_3);
     T.checkPotentialsInBox(box_4);
     T.checkPotentialsInBox(box_5);
-
-    // // Array for the charges:
-    // array charges = 2 * (af::randn(size, f64) - 1);
-    // array &potential = T.getPotential(charges);
 
     return 0;
 }
