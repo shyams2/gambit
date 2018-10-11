@@ -142,18 +142,18 @@ array& FMM2DTree::getPotential(const array &charges)
     
     if(charges.elements() == 0)
     {
-        cout << "Performing upward sweep to get charges" << endl;
+        // cout << "Performing upward sweep to get charges" << endl;
         FMM2DTree::upwardTraveral();
-        cout << "Performing M2L..." << endl;
+        // cout << "Performing M2L..." << endl;
 
         if(this->is_homogeneous || this->is_log_homogeneous)
             FMM2DTree::evaluateAllM2LHomogeneous();
         else
             FMM2DTree::evaluateAllM2L();
         
-        cout << "Performing downward sweep" << endl;
+        // cout << "Performing downward sweep" << endl;
         FMM2DTree::downwardTraversal();
-        cout << "Computing Direct Interactions:" << endl;
+        // cout << "Computing Direct Interactions:" << endl;
         FMM2DTree::evaluateLeafLevelInteractions();
     }
 
@@ -317,14 +317,17 @@ FMM2DTree::FMM2DTree(MatrixData &M, unsigned N_nodes, std::string nodes_type,
     }
 
     // Getting Transfer Matrices(that is M2M and L2L):
-    cout << "Getting Transfer Matrices..." << endl;
+    // cout << "Getting Transfer Matrices..." << endl;
     FMM2DTree::getTransferMatrices();
-    cout << "Building Tree..." << endl;
+    // cout << "Building Tree..." << endl;
     FMM2DTree::buildTree();
-    cout << "Number of Levels in the Tree: " << this->max_levels << endl;
-    cout << "Assigning Relations Amongst Boxes in the tree..." << endl;
+
+    // cout << "Number of Levels in the Tree: " << this->max_levels << endl;
+    cout << "Number of Particles:" << pow(4, this->max_levels) * this->N_nodes * this->N_nodes << endl << endl;
+
+    // cout << "Assigning Relations Amongst Boxes in the tree..." << endl;
     FMM2DTree::assignTreeRelations();
-    cout << "Getting M2L interactions..." << endl;
+    // cout << "Getting M2L interactions..." << endl;
     
     if(this->is_homogeneous || this->is_log_homogeneous)
         FMM2DTree::getM2LInteractionsHomogeneous();
@@ -333,7 +336,7 @@ FMM2DTree::FMM2DTree(MatrixData &M, unsigned N_nodes, std::string nodes_type,
     
     if(this->user_def_locations == false)
     {
-        cout << "Getting neighbor and interaction operators" << endl;
+        // cout << "Getting neighbor and interaction operators" << endl;
         FMM2DTree::getNeighborSelfInteractions();
     }
 }
