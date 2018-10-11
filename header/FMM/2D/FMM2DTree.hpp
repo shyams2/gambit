@@ -1533,6 +1533,22 @@ void FMM2DTree::checkPotentialsInBox(int N_box)
 {
     cout << "Performing check in: " << N_box << endl;
     FMM2DBox &box = this->tree[this->max_levels][N_box];
+
+    size_t tensor_dim = this->M2L_inner[0][0].dims(2);
+    if(box.exact_potentials.elements() == 0)
+    {
+        box.exact_potentials = af::constant(0, this->rank, 1, tensor_dim, f64);
+        for(int i = 0; i < this->number_of_boxes[this->max_levels]; i++)
+        {
+            FMM2DBox &interacting_box = this->tree[this->max_levels][i];
+            box.exact_potentials += matmul(this->M_ptr->buildArray(box.nodes, interacting_box.nodes),
+                                           af::tile(interacting_box.node_charges,
+                                                    1, 1, tensor_dim
+                                                   )
+                                          );
+        }
+    }
+
     double abs_err = af::sum<double>(af::pow(box.exact_potentials - box.node_potentials, 2));
     double rel_err = abs_err / af::sum<double>(af::pow(box.exact_potentials, 2));
 

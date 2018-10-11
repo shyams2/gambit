@@ -23,7 +23,7 @@ int main(int argc, char** argv)
     cout << "Time taken by FMM:" << total_time << endl;
 
     tic = af::timer::start();
-    T.evaluateExactPotentials();
+    // T.evaluateExactPotentials();
     af::sync();
     total_time = af::timer::stop(tic);
     cout << "Time taken by exact:" << total_time << endl << endl;
