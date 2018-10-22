@@ -2,7 +2,7 @@
 
 // When the cluster considered is in 1D
 // K(r) = 1 / (1 + r^2)
-array interaction_kernel_1d(array i, array j, array &targets, array &sources)
+array interaction_kernel_1d(array i, array j, const array &targets, const array &sources)
 {   
     array r = targets(i) - (sources.T())(j);
     return(1 / (1 + r * r));
@@ -10,7 +10,7 @@ array interaction_kernel_1d(array i, array j, array &targets, array &sources)
 
 // When the cluster considered is in 2D
 // K(r) = log(r)
-array interaction_kernel_2d(array i, array j, array &targets, array &sources)
+array interaction_kernel_2d(array i, array j, const array &targets, const array &sources)
 {   
     array x_targets = targets(af::span, 0);
     array x_sources = sources(af::span, 0);
@@ -95,7 +95,7 @@ int main(int argc, char** argv)
     cout << "Numerical Rank of Matrix = " << M4.estimateRank() << endl;
     cout << "Dimensionality = " << M4.getDimensionality() << endl << endl;
 
-    // // Trying out the 2D kernel:
+    // Trying out the 2D kernel:
     cout << "Trying out the 2D kernel..." << endl;
     target_coords = 1 + af::randu(100, 2, f64);
     source_coords = 3 + af::randu(200, 2, f64);

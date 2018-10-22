@@ -42,6 +42,8 @@ private:
     // array being factorized
     // NOTE: Not necessarily allocated
     array A, *A_ptr;
+    // Flag to check if A, *A_ptr are allocated
+    bool is_assigned;
     // Number of rows and columns:
     size_t n_rows, n_cols;
     // Dimensionality of the points considered:
@@ -147,9 +149,10 @@ public:
 
 MatrixData::MatrixData(array& input_array)
 {
-    this->n_rows = input_array.dims(0);
-    this->n_cols = input_array.dims(1);
-    this->A_ptr  = &input_array;
+    this->n_rows      = input_array.dims(0);
+    this->n_cols      = input_array.dims(1);
+    this->A_ptr       = &input_array;
+    this->is_assigned = true;
 }
 
 MatrixData::MatrixData(size_t m, size_t n, size_t rank)
@@ -173,7 +176,9 @@ MatrixData::MatrixData(size_t m, size_t n, size_t rank)
     // Making it a diagonal matrix:
     S       = af::diag(S, 0, false);
     // Getting A:
-    this->A = af::matmul(U, S, V);
+    this->A           = af::matmul(U, S, V);
+    this->A_ptr       = &(this->A);
+    this->is_assigned = true;
 }
 
 MatrixData::MatrixData(size_t m, size_t n, double singular_min, double singular_max)
@@ -195,14 +200,17 @@ MatrixData::MatrixData(size_t m, size_t n, double singular_min, double singular_
     array S          = singular_min + af::range(min_m_n).as(U.type()) * step_size;
 
     // Making it a diagonal matrix:
-    S       = af::diag(S, 0, false);
-    this->A = af::matmul(U, S, V);
+    S                 = af::diag(S, 0, false);
+    this->A           = af::matmul(U, S, V);
+    this->A_ptr       = &(this->A);
+    this->is_assigned = true;
 }
 
 MatrixData::MatrixData(std::function<array(array, array, const array&, const array&)> matrixEntries,
                        array &targets = EMPTY_ARRAY, array &sources = EMPTY_ARRAY
                       )
 {
+    this->is_assigned     = false;
     this->matrixEntriesAF = matrixEntries;
     this->n_rows          = targets.dims(0);
     this->n_cols          = sources.dims(0);
@@ -271,14 +279,14 @@ int MatrixData::estimateRank(double tolerance = 1e-12)
     // Temporary array that exists only in the scope of this function:
     array temp;
     
-    if((this->A).elements() == 0)
+    if(this->is_assigned == false)
     {
         temp = MatrixData::buildArray();
     }
 
     else
     {
-        temp = this->A;
+        temp = *(this->A_ptr);
     }
 
     int rank = 0;
@@ -299,14 +307,14 @@ double MatrixData::getConditionNumber()
     // Temporary array that exists only in the scope of this function:
     array temp;
     
-    if((this->A).elements() == 0)
+    if(this->is_assigned == false)
     {
         temp = MatrixData::buildArray();
     }
 
     else
     {
-        temp = this->A;
+        temp = *(this->A_ptr);
     }
 
     double kappa; // Condition number
@@ -323,14 +331,14 @@ double MatrixData::estimateSpectralNorm(double tolerance = 1e-12)
     // Temporary array that exists only in the scope of this function:
     array temp;
     
-    if((this->A).elements() == 0)
+    if(this->is_assigned == false)
     {
         temp = MatrixData::buildArray();
     }
 
     else
     {
-        temp = this->A;
+        temp = *(this->A_ptr);
     }
 
     af::array x, y;
@@ -363,20 +371,20 @@ double MatrixData::estimateSpectralNorm(double tolerance = 1e-12)
 
 array MatrixData::getArray()
 {
-    if((this->A).elements() == 0)
+    if(this->is_assigned == false)
     {
         return MatrixData::buildArray();
     }
 
     else
     {
-        return this->A;
+        return *(this->A_ptr);
     }
 }
 
 array MatrixData::getRow(unsigned i)
 {
-    if((this->A).elements() == 0)
+    if(this->is_assigned == false)
     {
         array array_to_return;
         // Allowing broadcasting:
@@ -392,13 +400,13 @@ array MatrixData::getRow(unsigned i)
 
     else
     {
-        return (this->A).row(i);
+        return (*(this->A_ptr)).row(i);
     }
 }
 
 array MatrixData::getCol(unsigned i)
 {
-    if((this->A).elements() == 0)
+    if(this->is_assigned == false)
     {
         array array_to_return;
         // Allowing broadcasting:
@@ -414,7 +422,7 @@ array MatrixData::getCol(unsigned i)
 
     else
     {
-        return (this->A).col(i);
+        return (*(this->A_ptr)).col(i);
     }
 }
 
