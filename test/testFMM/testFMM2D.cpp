@@ -35,5 +35,6 @@ int main(int argc, char** argv)
     T.checkPotentialsInBox(box_4);
     T.checkPotentialsInBox(box_5);
 
+    T.plotTree();
     return 0;
 }

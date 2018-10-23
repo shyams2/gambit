@@ -117,6 +117,8 @@ public:
     void evaluateExactPotentials();
     // Checks the potential in FMM(used in validation)
     void checkPotentialsInBox(int N_box);
+    // Plots the tree:
+    void plotTree();
 };
 
 // =================== PUBLIC FUNCTIONS =============================
@@ -373,6 +375,45 @@ void FMM2DTree::assignNodeCharges(int N_box, array charges)
 {
     FMM2DBox &box = this->tree[this->max_levels][N_box];
     box.node_charges = charges;
+}
+
+void FMM2DTree::plotTree()
+{
+    // Data is being dumped in 1D form, which will then need to be reshaped:
+    HighFive::File file("./tree_data.h5", HighFive::File::ReadWrite | HighFive::File::Create | HighFive::File::Truncate);
+    std::vector<size_t> dims(1);
+    dims[0] = this->number_of_boxes[this->max_levels];
+
+    HighFive::DataSet dataset = file.createDataSet<double>("cx", HighFive::DataSpace(dims));
+    // Allocating a temporary variable used for file writing:
+    double temp[dims[0]];
+    for(int i = 0; i < dims[0]; i++)
+        temp[i] = this->tree[this->max_levels][i].c_x;
+    // Write it
+    dataset.write(temp);
+
+    dataset = file.createDataSet<double>("cy", HighFive::DataSpace(dims));
+    for(int i = 0; i < dims[0]; i++)
+        temp[i] = this->tree[this->max_levels][i].c_y;
+    // Write it
+    dataset.write(temp);
+
+    dataset = file.createDataSet<double>("rx", HighFive::DataSpace(dims));
+    for(int i = 0; i < dims[0]; i++)
+        temp[i] = this->tree[this->max_levels][i].r_x;
+    // Write it
+    dataset.write(temp);
+
+    dataset = file.createDataSet<double>("ry", HighFive::DataSpace(dims));
+    for(int i = 0; i < dims[0]; i++)
+        temp[i] = this->tree[this->max_levels][i].r_y;
+    // Write it
+    dataset.write(temp);
+
+    file.flush();
+
+    system("python ./header/FMM/2D/plot_tree.py");
+    cout << "Reached Here!" << endl;
 }
 
 // ======================== END OF PUBLIC FUNCTIONS =======================
