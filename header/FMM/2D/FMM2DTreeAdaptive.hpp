@@ -1,5 +1,5 @@
-#ifndef __2DTree_hpp__
-#define __2DTree_hpp__
+#ifndef __2DTreeAdaptive_hpp__
+#define __2DTreeAdaptive_hpp__
 
 #include <cstdlib>
 #include "MatrixData.hpp"
@@ -31,6 +31,7 @@ private:
     // Flags which determine structure for the underlying kernel:
     bool is_translation_invariant;
 
+    std::vector<size_t> number_of_boxes;     // Number of boxes at each level
     std::array<af::array, 4> L2L;            // L2L operators from the parent to the four children
     std::array<af::array, 4> M2M;            // M2M operators from the children to the parent
     std::vector<std::vector<FMM2DBox>> tree; // The tree storing all the information.
@@ -86,6 +87,8 @@ public:
     array& getPotential(const array& charges);
     // Checks the potential in FMM(used in validation)
     void checkPotentialInBox(int N_box);
+    // Plots the tree:
+    void plotTree();
 };
 
 // =================== PUBLIC FUNCTIONS =============================
@@ -161,11 +164,52 @@ FMM2DTree::FMM2DTree(MatrixData &M, unsigned N_nodes, std::string nodes_type,
     FMM2DTree::assignTreeRelations();
 }
 
+void FMM2DTree::plotTree()
+{
+    // Data is being dumped in 1D form, which will then need to be reshaped:
+    HighFive::File file("./tree_data.h5", HighFive::File::ReadWrite | HighFive::File::Create | HighFive::File::Truncate);
+    std::vector<size_t> dims(1);
+    std::vector<double> cx, cy, rx, ry;
+
+    for(int i = 0; i < this->max_levels; i++)
+    {
+        for(int j = 0; j < this->number_of_boxes[i]; j++)
+        {
+            FMM2DBox& box = this->tree[i][j];
+
+            if(box.is_leaf == true && box.is_assigned == true)
+            {
+                cx.push_back(box.c_x);
+                cy.push_back(box.c_y);
+                rx.push_back(box.r_x);
+                ry.push_back(box.r_y);
+            }
+        }
+    }
+
+    dims[0] = rx.size();
+    HighFive::DataSet dataset_cx = file.createDataSet<double>("cx", HighFive::DataSpace(dims));
+    HighFive::DataSet dataset_cy = file.createDataSet<double>("cy", HighFive::DataSpace(dims));
+    HighFive::DataSet dataset_rx = file.createDataSet<double>("rx", HighFive::DataSpace(dims));
+    HighFive::DataSet dataset_ry = file.createDataSet<double>("ry", HighFive::DataSpace(dims));
+
+    // Writing:
+    dataset_cx.write(cx.data());
+    dataset_cy.write(cy.data());
+    dataset_rx.write(rx.data());
+    dataset_ry.write(ry.data());
+    file.flush();
+
+    system("python ./header/FMM/2D/plot_tree.py");
+}
+
+// ======================== END OF PUBLIC FUNCTIONS =======================
+// ===== FUNCTIONS USED IN TREE BUILDING AND PRECOMPUTING OPERATIONS INVOLVED =====
 void FMM2DTree::getTransferMatrices()
 {
     // Getting the standard nodes for the children:
     array child_nodes;
-    std::array<array> standard_nodes_child(4);
+    std::array<array, 4> standard_nodes_child;
 
     // We now proceed to divide the standard domain [-1, 1] to [-1, 0] and [0, 1]:
     // =================== NOTE ===========================
@@ -244,7 +288,7 @@ void FMM2DTree::buildTree()
     root.N_box       =  0; // only box on it's level
     root.N_level     =  0; // root is always on level 0
     root.parent      = -1; // since it doesn't have a parent
-    root.is_assigned = true
+    root.is_assigned = true;
 
     // ===================================================================
     // Similarly since the root box doesn't have neighbors, inner or outer 
@@ -252,12 +296,12 @@ void FMM2DTree::buildTree()
     // ===================================================================
 
     #pragma omp parallel for
-    for (unsigned i = 0; i < 4; i++) 
+    for(unsigned i = 0; i < 4; i++) 
     {
         root.children[i] = i;
     }
 
-    // Since the root level would consist of all the boxes:
+    // Since the root level would consist of all the particles:
     root.inds_in_box = af::range(this->M_ptr->getNumCols(), 1, 1, 1, -1, u32);
 
     // Assigning the radius and the centers for root:
@@ -308,34 +352,33 @@ void FMM2DTree::buildTree()
             box.r_x = 0.5 * parent_node.r_x;
             box.r_y = 0.5 * parent_node.r_y;
 
-            if(parent_node.is_leaf == true)
-                box.is_assigned = false;
-
-            // When the charges at leaf level are at non-standard locations:
-            if(this->max_levels == 0)
+            if(parent_node.is_leaf == true || parent_node.is_assigned == false)
             {
-                if(box.is_assigned = true)
+                box.is_assigned = false;
+                box.is_leaf     = true;
+            }
+
+            if(box.is_assigned == true)
+            {
+                // Locations local to the parent box:
+                array locations_local_x = (*(this->M_ptr->getSourceCoordsPtr()))(parent_node.inds_in_box, 0); 
+                array locations_local_y = (*(this->M_ptr->getSourceCoordsPtr()))(parent_node.inds_in_box, 1); 
+
+                // Finding the indices in the children:
+                box.inds_in_box =
+                parent_node.inds_in_box(af::where(   locations_local_x <  box.c_x + box.r_x
+                                                  && locations_local_x >= box.c_x - box.r_x
+                                                  && locations_local_y <  box.c_y + box.r_y
+                                                  && locations_local_y >= box.c_y - box.r_y
+                                                 )
+                                       );
+
+                box.inds_in_box.eval();
+
+                // If the box shows that it contains < 4 * rank particles, that's a leaf box:
+                if(box.inds_in_box.elements()<= 4 * this->rank)
                 {
-                    // Locations local to the parent box:
-                    array locations_local_x = (*(this->M_ptr->getSourceCoordsPtr()))(parent_node.inds_in_box, 0); 
-                    array locations_local_y = (*(this->M_ptr->getSourceCoordsPtr()))(parent_node.inds_in_box, 1); 
-
-                    // Finding the indices in the children:
-                    box.inds_in_box =
-                    parent_node.inds_in_box(af::where(   locations_local_x <  box.c_x + box.r_x
-                                                      && locations_local_x >= box.c_x - box.r_x
-                                                      && locations_local_y <  box.c_y + box.r_y
-                                                      && locations_local_y >= box.c_y - box.r_y
-                                                     )
-                                           );
-
-                    box.inds_in_box.eval();
-
-                    // If the box shows that it contains < 4 * rank particles, that's a leaf box:
-                    if(box.inds_in_box.elements()<= 4 * this->rank)
-                    {
-                        box.is_leaf = true;
-                    }
+                    box.is_leaf = true;
                 }
             }
 
@@ -350,7 +393,7 @@ void FMM2DTree::buildTree()
         }
 
         // Terminating if all the boxes have reached the leaf criterion:
-        reached_leaf = true
+        reached_leaf = true;
         for(unsigned i = 0; i < this->number_of_boxes[N_level]; i++) 
         {
             FMM2DBox &box = level[i];
@@ -812,7 +855,7 @@ void FMM2DTree::upwardTraveral()
         int N_bc0, N_bc1, N_bc2, N_bc3;
         for(unsigned N_box = 0; N_box < this->number_of_boxes[N_level]; N_box++) 
         {
-            if(tree[N_level][N_box].is_assigned = true)
+            if(tree[N_level][N_box].is_assigned == true)
             {
                 // Box number for child0:
                 N_bc0 = 4 * N_box;
@@ -831,3 +874,5 @@ void FMM2DTree::upwardTraveral()
         }
     }
 }
+
+#endif

@@ -1,32 +1,26 @@
 // This file is used to check the implementation of the FMM method implemented
+// In this example, we are allocating the node charges for each box
 #include "MatrixData.hpp"
-#include "FMM/2D/FMM2DTree.hpp"
+#include "FMM/2D/FMM2DTreeUniform.hpp"
 #include "../interactionKernels.hpp"
 
 int main(int argc, char** argv)
 {
-    unsigned N_nodes  = atoi(argv[1]);
-    unsigned N_levels = atoi(argv[2]);
+    int N_nodes  = atoi(argv[1]);
+    int N_levels = atoi(argv[2]);
 
     // Printing backend information:
     af::info();
     cout << endl;
     // Creating an instance of MatrixData:
-    MatrixData M(gaussianKernel);
+    MatrixData M(laplaceSingleLayer);
     // We then will pass this to the FMM2D tree class:
-    FMM2DTree T(M, N_nodes, "CHEBYSHEV", N_levels, 1);
+    FMM2DTree T(M, N_nodes, "LEGENDRE", N_levels, 1);
 
-    af::timer tic = af::timer::start();
-    T.getPotential(array());
-    af::sync();
-    double total_time = af::timer::stop(tic);
-    cout << "Time taken by FMM:" << total_time << endl;
+    for(int i = 0; i < pow(4, N_levels); i++)
+        T.assignNodeCharges(i, af::randn(N_nodes * N_nodes, f64));
 
-    tic = af::timer::start();
-    // T.evaluateExactPotentials();
-    af::sync();
-    total_time = af::timer::stop(tic);
-    cout << "Time taken by exact:" << total_time << endl << endl;
+    T.getPotential();
 
     // Checking for random boxes:
     int box_1 = pow(4, N_levels) * (double) rand() / RAND_MAX;
@@ -41,6 +35,6 @@ int main(int argc, char** argv)
     T.checkPotentialsInBox(box_4);
     T.checkPotentialsInBox(box_5);
 
+    T.plotTree();
     return 0;
 }
-

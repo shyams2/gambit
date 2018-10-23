@@ -8,7 +8,7 @@ CC              = g++-6 $(COMPILER_OPTIONS)
 LIBS            = -laf -lhdf5
 LIB_PATHS       =  -L $(HDF5_DIR)/lib -L $(AF_PATH)/lib
 INCLUDES        = -I $(AF_PATH)/include -I $(EIGEN_PATH) -I $(HIGHFIVE_PATH)/include -I ./header -I $(HDF5_DIR)/include
-SOURCES         = ./test/testFMM/testFMM2D.cpp
+SOURCES         = ./test/testFMM/testFMM2DAdaptive.cpp
 EXECUTABLE      = ./exec/testFMM2D
 
 all:

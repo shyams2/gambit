@@ -413,7 +413,6 @@ void FMM2DTree::plotTree()
     file.flush();
 
     system("python ./header/FMM/2D/plot_tree.py");
-    cout << "Reached Here!" << endl;
 }
 
 // ======================== END OF PUBLIC FUNCTIONS =======================
