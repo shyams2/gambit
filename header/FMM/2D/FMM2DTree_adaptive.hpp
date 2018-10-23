@@ -276,7 +276,7 @@ void FMM2DTree::buildTree()
     
     // Using this flag to check whether we have reached leaf level:
     bool reached_leaf = false;
-    unsigned N_level = 0;
+    unsigned N_level  = 0;
 
     while(!reached_leaf)
     {
@@ -345,6 +345,7 @@ void FMM2DTree::buildTree()
             {
                 box.children[j] = 4 * i + j;
             }
+            
             level.push_back(box);
         }
 

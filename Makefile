@@ -1,6 +1,5 @@
 COMPILER_OPTIONS= -Wall -fopenmp -O3 -std=c++11 -g
-# Using h5c++ to make possible file writing using HDF5:
-CC              = g++ $(COMPILER_OPTIONS)
+CC              = g++-6 $(COMPILER_OPTIONS)
 # Change this to:
 # -lafcpu    - For CPU backend
 # -lafcuda   - For CUDA backend
@@ -9,8 +8,8 @@ CC              = g++ $(COMPILER_OPTIONS)
 LIBS            = -laf -lhdf5
 LIB_PATHS       =  -L $(HDF5_DIR)/lib -L $(AF_PATH)/lib
 INCLUDES        = -I $(AF_PATH)/include -I $(EIGEN_PATH) -I $(HIGHFIVE_PATH)/include -I ./header -I $(HDF5_DIR)/include
-SOURCES         = ./test/testMatrixData.cpp
-EXECUTABLE      = ./exec/testMatrixData
+SOURCES         = ./test/testFMM/testFMM2D_alternate.cpp
+EXECUTABLE      = ./exec/testFMM2D
 
 all:
 	$(CC) $(LIB_PATHS) $(SOURCES) -o $(EXECUTABLE) $(INCLUDES) $(LIBS) 

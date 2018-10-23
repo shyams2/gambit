@@ -33,6 +33,7 @@ using std::string;
 using std::abs; // NOTE: using abs without std down casts to int
 using af::array;
 
+// Default argument for certain functions:
 static array EMPTY_ARRAY = array();
 
 class MatrixData

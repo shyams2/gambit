@@ -1,7 +1,35 @@
 import numpy as np
 import matplotlib.patches as patches
 import pylab as pl
-pl.style.use('prettyplot')
+
+pl.rcParams['figure.figsize']  = 9, 4
+pl.rcParams['figure.dpi']      = 300
+pl.rcParams['image.cmap']      = 'jet'
+pl.rcParams['lines.linewidth'] = 1.5
+pl.rcParams['font.family']     = 'serif'
+pl.rcParams['font.weight']     = 'bold'
+pl.rcParams['font.size']       = 30
+pl.rcParams['font.sans-serif'] = 'serif'
+pl.rcParams['text.usetex']     = True
+pl.rcParams['axes.linewidth']  = 1.5
+pl.rcParams['axes.titlesize']  = 'medium'
+pl.rcParams['axes.labelsize']  = 'medium'
+
+pl.rcParams['xtick.major.size'] = 8
+pl.rcParams['xtick.minor.size'] = 4
+pl.rcParams['xtick.major.pad']  = 8
+pl.rcParams['xtick.minor.pad']  = 8
+pl.rcParams['xtick.color']      = 'k'
+pl.rcParams['xtick.labelsize']  = 'medium'
+pl.rcParams['xtick.direction']  = 'in'
+
+pl.rcParams['ytick.major.size'] = 8
+pl.rcParams['ytick.minor.size'] = 4
+pl.rcParams['ytick.major.pad']  = 8
+pl.rcParams['ytick.minor.pad']  = 8
+pl.rcParams['ytick.color']      = 'k'
+pl.rcParams['ytick.labelsize']  = 'medium'
+pl.rcParams['ytick.direction']  = 'in'
 
 class Box(object):
     def __init__(self, x_left_bot, y_left_bot, w, h):
@@ -34,8 +62,13 @@ def plot_graph(list_of_boxes):
         ax.add_patch(patches.Rectangle((B.x_left_bot, B.y_left_bot), B.w, B.h, fill = False))
 
 N        = 4000
-x_coords = np.random.rand(N)
-y_coords = np.random.rand(N)
+x_coords = np.random.randn(N)
+y_coords = np.random.randn(N)
+
+# Mapping onto [0, 1]:
+x_coords = (x_coords - x_coords.min()) / (x_coords.max() - x_coords.min())
+y_coords = (y_coords - y_coords.min()) / (y_coords.max() - y_coords.min())
+
 B_master = Box(0, 0, 1, 1)
 
 n_crit = 4
@@ -51,5 +84,5 @@ while(1):
         break
 
 plot_graph(list_of_boxes)
-pl.plot(x_coords, y_coords, 'ro')
+# pl.plot(x_coords, y_coords, 'ro', markersize = 1)
 pl.savefig('plot.png', bbox_inches = 'tight')

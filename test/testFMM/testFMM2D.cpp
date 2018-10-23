@@ -1,24 +1,26 @@
 // This file is used to check the implementation of the FMM method implemented
+// In this example, we are allocating the node charges for each box
 #include "MatrixData.hpp"
 #include "FMM/2D/FMM2DTree.hpp"
 #include "../interactionKernels.hpp"
 
 int main(int argc, char** argv)
 {
-    unsigned N_nodes  = atoi(argv[1]);
-    unsigned N_levels = atoi(argv[2]);
+    int N_nodes  = atoi(argv[1]);
+    int N_levels = atoi(argv[2]);
 
     // Printing backend information:
     af::info();
     cout << endl;
     // Creating an instance of MatrixData:
-    MatrixData M(stokesSingleLayer);
+    MatrixData M(laplaceSingleLayer);
     // We then will pass this to the FMM2D tree class:
     FMM2DTree T(M, N_nodes, "LEGENDRE", N_levels, 1);
 
-    // T.printTreeDetails();
-    T.getPotential(array());
-    T.evaluateExactPotentials();
+    for(int i = 0; i < pow(4, N_levels); i++)
+        T.assignNodeCharges(i, af::randn(N_nodes * N_nodes, f64));
+
+    T.getPotential();
 
     // Checking for random boxes:
     int box_1 = pow(4, N_levels) * (double) rand() / RAND_MAX;

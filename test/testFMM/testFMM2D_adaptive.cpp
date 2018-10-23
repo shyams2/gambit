@@ -1,6 +1,6 @@
 // This file is used to check the implementation of the FMM method implemented
 #include "MatrixData.hpp"
-#include "FMM/2D/FMM2DTree.hpp"
+#include "FMM/2D/FMM2DTree_adaptive.hpp"
 #include "../interactionKernels.hpp"
 
 int main(int argc, char** argv)

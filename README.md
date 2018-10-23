@@ -1,4 +1,6 @@
-# gambit - A library consisting of fast low-rank factorizations and solvers:
+# gambit
+
+A library consisting of fast low-rank factorizations and solvers
 
 The files of this repository are contained in:
 * `header`: Here the factorization methods / utilities are declared.
@@ -8,7 +10,7 @@ NOTE: Still in active development! Expect some adventures!
 
 ## Building the code:
 
-At the moment, this library makes use of the [ArrayFire](www.github.com/arrayfire/arrayfire) library and the [Eigen3](http://eigen.tuxfamily.org/index.php?title=Main_Page) library. Additionally, we are also using the convenient [HighFive](https://github.com/BlueBrain/HighFive) library to perform convenient file writing in the HDF5 format. Build instructions for the same can be found on their pages. Make sure to set the environment variable `EIGEN_PATH` to the Eigen root folder since it's needed by the `Makefile`. It's also necessary to set the environment variable `HIGHFIVE_PATH` to the HighFive root directory.
+At the moment, this library makes use of the [ArrayFire](www.github.com/arrayfire/arrayfire) library and the [Eigen3](http://eigen.tuxfamily.org/index.php?title=Main_Page) library. Additionally, we are also using the convenient [HighFive](https://github.com/BlueBrain/HighFive) library to perform convenient file writing in the HDF5 format. Build instructions for the same can be found on their pages. Make sure to set the environment variable `EIGEN_PATH` to the Eigen root folder since it's needed by the `Makefile`. It's also necessary to set the environment variable `HIGHFIVE_PATH` to the HighFive root directory and the enviroment variable `HDF5_DIR` to the root folder of HDF5's installation.
 
 ## Note on naming conventions followed:
 

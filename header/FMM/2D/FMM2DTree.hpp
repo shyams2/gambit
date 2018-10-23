@@ -16,7 +16,7 @@ class FMM2DTree
 private:
     
     MatrixData *M_ptr;       // Pointer to the structure describing the underlying problem
-    bool user_def_locations; // User defined locations for the points in the domain
+    bool user_def_locations; // Flag to indicate if the datapoints are user-defined
     unsigned N;              // Total number of source particles
     unsigned N_nodes;        // Number of nodes used for interpolation
     unsigned rank;           // Rank of the low-rank interaction
@@ -109,9 +109,11 @@ public:
     void printBoxDetails(unsigned N_level, unsigned N_box);
     // Lists details of all boxes in the tree
     void printTreeDetails();
+    // Function used to assign the charge values:
+    void assignNodeCharges(int N_box, array charges);
     // Returns the potential:
     array& getPotential(const array& charges);
-    // Evaluates the potential using the usual naive method:
+    // Evaluates the potential using the usual naive O(N^2) method:
     void evaluateExactPotentials();
     // Checks the potential in FMM(used in validation)
     void checkPotentialsInBox(int N_box);
@@ -136,16 +138,16 @@ void FMM2DTree::printTreeDetails()
     }
 }
 
-array& FMM2DTree::getPotential(const array &charges)
+array& FMM2DTree::getPotential(const array &charges = EMPTY_ARRAY)
 {
     this->charges_ptr = &charges;
     
-    if(charges.elements() == 0)
+    if(this->user_def_locations == false)
     {
         // cout << "Performing upward sweep to get charges" << endl;
         FMM2DTree::upwardTraveral();
-        // cout << "Performing M2L..." << endl;
 
+        // cout << "Performing M2L..." << endl;
         if(this->is_homogeneous || this->is_log_homogeneous)
             FMM2DTree::evaluateAllM2LHomogeneous();
         else
@@ -198,6 +200,7 @@ FMM2DTree::FMM2DTree(MatrixData &M, unsigned N_nodes, std::string nodes_type,
     this->N_nodes    = N_nodes;
     this->nodes_type = nodes_type;
     this->rank       = N_nodes * N_nodes;
+    // Global potential tree:
     this->potentials = af::constant(0, this->M_ptr->getNumCols(), f64);
     this->max_levels = N_levels;
 
@@ -316,29 +319,60 @@ FMM2DTree::FMM2DTree(MatrixData &M, unsigned N_nodes, std::string nodes_type,
         this->is_log_homogeneous = false;
     }
 
-    // Getting Transfer Matrices(that is M2M and L2L):
-    // cout << "Getting Transfer Matrices..." << endl;
-    FMM2DTree::getTransferMatrices();
-    // cout << "Building Tree..." << endl;
-    FMM2DTree::buildTree();
+    // Functions used in timing:
+    af::timer tic;
+    double time_elapsed;
 
-    // cout << "Number of Levels in the Tree: " << this->max_levels << endl;
+    // Getting Transfer Matrices(that is M2M and L2L):
+    cout << "Getting Transfer Matrices..." << endl;
+    tic = af::timer::start();
+    FMM2DTree::getTransferMatrices();
+    af::sync();
+    time_elapsed = af::timer::stop(tic);
+    cout << "Time Taken = " << time_elapsed << endl << endl;
+
+    cout << "Building Tree..." << endl;
+    tic = af::timer::start();
+    FMM2DTree::buildTree();
+    af::sync();
+    time_elapsed = af::timer::stop(tic);
+    cout << "Time Taken = " << time_elapsed << endl << endl;
+
+    cout << "Number of Levels in the Tree: " << this->max_levels << endl;
     cout << "Number of Particles:" << pow(4, this->max_levels) * this->N_nodes * this->N_nodes << endl << endl;
 
-    // cout << "Assigning Relations Amongst Boxes in the tree..." << endl;
+    cout << "Assigning Relations Amongst Boxes in the tree..." << endl;
+    tic = af::timer::start();
     FMM2DTree::assignTreeRelations();
-    // cout << "Getting M2L interactions..." << endl;
-    
+    af::sync();
+    time_elapsed = af::timer::stop(tic);
+    cout << "Time Taken = " << time_elapsed << endl << endl;
+
+    cout << "Getting M2L interactions..." << endl;
+    tic = af::timer::start();
     if(this->is_homogeneous || this->is_log_homogeneous)
         FMM2DTree::getM2LInteractionsHomogeneous();
     else
         FMM2DTree::getM2LInteractions();
+    af::sync();
+    time_elapsed = af::timer::stop(tic);
+    cout << "Time Taken = " << time_elapsed << endl << endl;
     
     if(this->user_def_locations == false)
     {
-        // cout << "Getting neighbor and interaction operators" << endl;
+        cout << "Getting neighbor and interaction operators" << endl;
+        tic = af::timer::start();
         FMM2DTree::getNeighborSelfInteractions();
+        af::sync();
+        time_elapsed = af::timer::stop(tic);
+       cout << "Time Taken = " << time_elapsed << endl << endl;
     }
+}
+
+void FMM2DTree::assignNodeCharges(int N_box, array charges)
+{
+    FMM2DBox &box = this->tree[this->max_levels][N_box];
+    box.node_charges = charges;
 }
 
 // ======================== END OF PUBLIC FUNCTIONS =======================
@@ -521,9 +555,6 @@ void FMM2DTree::buildTree()
                        );
 
             box.nodes = af::join(1, locations_x, locations_y);
-
-            // NOTE:Only being used for testing purposes
-            box.node_charges = af::randn(this->rank, f64);
         }
     }
 }

@@ -69,7 +69,7 @@ public:
     int children[4];  // box numbers of the children
     int neighbor[8];  // box numbers of the neighbors
 
-    // Used in adative, level restricted tree:
+    // Used in adaptive, level restricted tree:
     bool is_assigned;
     bool is_leaf;
     
@@ -84,8 +84,8 @@ public:
 
     array nodes;
     array node_charges, node_potentials;
-    array exact_potentials; // used in checks / benchmarking
-
+    // This is only allocated when performing checks:
+    array exact_potentials;
     // Constructor for the class
     FMM2DBox();
     // Destructor for the class:
@@ -102,21 +102,25 @@ void FMM2DBox::printBoxDetails()
     cout << "Radius             :" << this->r_x << ", " << this->r_y << endl;
     cout << "Center             :" << this->c_x << ", " << this->c_y << endl;
     cout << "Number of Particles:" << this->inds_in_box.elements() << endl;
+    
     cout << "Children           :";
-    for(unsigned k = 0; k < 4; k++)
-        cout << this->children[k] << ", ";
+    for(int i = 0; i < 4; i++)
+        cout << this->children[i] << ", ";
     cout << endl;
+    
     cout << "Neighbor           :";
-    for(unsigned k = 0; k < 8; k++)
-        cout << this->neighbor[k] << ", ";
+    for(int i = 0; i < 8; i++)
+        cout << this->neighbor[i] << ", ";
     cout << endl;
+    
     cout << "Inner              :";
-    for(unsigned k = 0; k < 16; k++)
-        cout << this->inner[k] << ", ";
+    for(int i = 0; i < 16; i++)
+        cout << this->inner[i] << ", ";
     cout << endl;
+    
     cout << "Outer              :";
-    for(unsigned k = 0; k < 24; k++)
-        cout << this->outer[k] << ", ";
+    for(int i = 0; i < 24; i++)
+        cout << this->outer[i] << ", ";
     cout << endl;
 }
 
@@ -130,13 +134,20 @@ FMM2DBox::FMM2DBox()
     this->is_leaf     = false;
 
     #pragma omp parallel for
-    for(unsigned i = 0; i < 24; i++)
-    {
-        this->children[(int)(i / 6)]  = -1;
-        this->neighbor[(int)(i / 3)]  = -1;
-        this->inner[(int)(2 * i / 3)] = -1;
-        this->outer[i]                = -1;
-    }
+    for(int i = 0; i < 4; i++)
+        this->children[i] = -1;
+
+    #pragma omp parallel for
+    for(int i = 0; i < 8; i++)
+        this->neighbor[i] = -1;
+
+    #pragma omp parallel for
+    for(int i = 0; i < 16; i++)
+        this->inner[i] = -1;
+
+    #pragma omp parallel for
+    for(int i = 0; i < 24; i++)
+        this->outer[i] = -1;
 }
 
 #endif
